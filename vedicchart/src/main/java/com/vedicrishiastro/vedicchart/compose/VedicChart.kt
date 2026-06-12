@@ -368,11 +368,14 @@ private fun buildIsoHouses(
         val extraZ = projection.selectedLiftHeight * selectedLift
         val basePoints = points.map { projection.project(it, z = extraZ) }
         val topPoints = points.map { projection.project(it, z = height + extraZ) }
+        val cornerPoints = houseCornerPoints(chartStyle, houseIndex, bounds)
         IsoHouse(
             houseIndex = houseIndex,
             sourcePoints = points,
             basePoints = basePoints,
             topPoints = topPoints,
+            cornerBasePoints = cornerPoints.map { projection.project(it, z = extraZ) },
+            cornerTopPoints = cornerPoints.map { projection.project(it, z = height + extraZ) },
             depth = basePoints.map { it.y }.average().toFloat(),
             selectedProgress = selectedLift,
             extraZ = extraZ,
@@ -437,14 +440,13 @@ private fun drawIsoHousePrism(
             )
         }
         canvas.drawPath(wallPath, wallPaint)
-        canvas.drawPath(wallPath, wirePaint)
     }
     canvas.drawPath(topPath, topPaint)
     canvas.drawPath(basePath, wirePaint)
     canvas.drawPath(topPath, wirePaint)
-    for (index in house.basePoints.indices step 6) {
-        val base = house.basePoints[index]
-        val top = house.topPoints[index]
+    house.cornerBasePoints.indices.forEach { index ->
+        val base = house.cornerBasePoints[index]
+        val top = house.cornerTopPoints.getOrNull(index) ?: return@forEach
         canvas.drawLine(base.x, base.y, top.x, top.y, wirePaint)
     }
 }
@@ -1770,6 +1772,45 @@ private fun selectedHousePath(chartStyle: ChartStyle, houseIndex: Int, bounds: R
     }
 }
 
+private fun houseCornerPoints(chartStyle: ChartStyle, houseIndex: Int, bounds: RectF): List<Offset> {
+    return when (chartStyle) {
+        ChartStyle.NORTH -> northHouseCornerPoints(houseIndex, bounds)
+        ChartStyle.SOUTH,
+        ChartStyle.EAST -> houseHitBoxes(chartStyle).getOrNull(houseIndex)?.toRect(bounds)?.corners().orEmpty()
+    }
+}
+
+private fun northHouseCornerPoints(houseIndex: Int, bounds: RectF): List<Offset> {
+    val topLeft = relPoint(bounds, 0f, 0f)
+    val top = relPoint(bounds, 0.5f, 0f)
+    val topRight = relPoint(bounds, 1f, 0f)
+    val right = relPoint(bounds, 1f, 0.5f)
+    val bottomRight = relPoint(bounds, 1f, 1f)
+    val bottom = relPoint(bounds, 0.5f, 1f)
+    val bottomLeft = relPoint(bounds, 0f, 1f)
+    val left = relPoint(bounds, 0f, 0.5f)
+    val center = relPoint(bounds, 0.5f, 0.5f)
+    val northWest = relPoint(bounds, 0.25f, 0.25f)
+    val northEast = relPoint(bounds, 0.75f, 0.25f)
+    val southEast = relPoint(bounds, 0.75f, 0.75f)
+    val southWest = relPoint(bounds, 0.25f, 0.75f)
+    return when (houseIndex) {
+        0 -> listOf(top, northEast, center, northWest)
+        1 -> listOf(topLeft, top, northWest)
+        2 -> listOf(topLeft, northWest, left)
+        3 -> listOf(left, northWest, center, southWest)
+        4 -> listOf(left, southWest, bottomLeft)
+        5 -> listOf(bottomLeft, southWest, bottom)
+        6 -> listOf(bottom, southWest, center, southEast)
+        7 -> listOf(bottom, southEast, bottomRight)
+        8 -> listOf(right, bottomRight, southEast)
+        9 -> listOf(northEast, right, southEast, center)
+        10 -> listOf(topRight, right, northEast)
+        11 -> listOf(top, topRight, northEast)
+        else -> emptyList()
+    }
+}
+
 private fun northHousePath(houseIndex: Int, bounds: RectF): Path? {
     val topLeft = relPoint(bounds, 0f, 0f)
     val top = relPoint(bounds, 0.5f, 0f)
@@ -1950,6 +1991,15 @@ private fun RectF.toPath(): Path {
     }
 }
 
+private fun RectF.corners(): List<Offset> {
+    return listOf(
+        Offset(left, top),
+        Offset(right, top),
+        Offset(right, bottom),
+        Offset(left, bottom),
+    )
+}
+
 private fun southHitBoxes(): Array<RelativeBox> {
     return arrayOf(
         RelativeBox(0.00f, 0.00f, 0.25f, 0.25f), RelativeBox(0.25f, 0.00f, 0.50f, 0.25f),
@@ -2070,6 +2120,8 @@ private data class IsoHouse(
     val sourcePoints: List<Offset>,
     val basePoints: List<Offset>,
     val topPoints: List<Offset>,
+    val cornerBasePoints: List<Offset>,
+    val cornerTopPoints: List<Offset>,
     val depth: Float,
     val selectedProgress: Float,
     val extraZ: Float,
