@@ -48,6 +48,7 @@ private val IsoSurfaceColor: Int = Color.rgb(235, 245, 255)
 private val IsoSelectedSurfaceColor: Int = Color.rgb(255, 236, 196)
 private val IsoOrangeSideColor: Int = Color.rgb(245, 137, 38)
 private val IsoBlueSideColor: Int = Color.rgb(33, 128, 238)
+private val IsoEdgeColor: Int = Color.rgb(43, 35, 28)
 private const val EastBlockGapRatio = 0f
 
 data class VedicPlanetSelection(
@@ -462,7 +463,7 @@ private fun drawIsoHousePrism(
     val wirePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeWidth = paints.grid.strokeWidth
-        color = withAlpha(paints.grid.color, (230 * alpha).toInt())
+        color = IsoEdgeColor
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
     }
@@ -527,7 +528,7 @@ private fun drawEastGridOverlay(
     val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeWidth = paints.grid.strokeWidth
-        color = withAlpha(paints.grid.color, (230 * alpha).toInt())
+        color = IsoEdgeColor
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
     }
