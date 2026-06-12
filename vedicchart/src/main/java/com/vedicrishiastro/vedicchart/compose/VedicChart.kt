@@ -345,7 +345,7 @@ private fun drawIsometricVedicChart(
         drawEastCenterTile(canvas, bounds, projection, lineReveal, paints)
     }
     restingHouses.forEach { house ->
-        drawIsoHousePrism(canvas, house, paints, lineReveal)
+        drawIsoHousePrism(canvas, house, paints, chartStyle, lineReveal)
     }
     if (textProgress > 0f) {
         drawIsoHouseTexts(
@@ -363,7 +363,7 @@ private fun drawIsometricVedicChart(
         )
     }
     liftedHouses.forEach { house ->
-        drawIsoHousePrism(canvas, house, paints, lineReveal)
+        drawIsoHousePrism(canvas, house, paints, chartStyle, lineReveal)
     }
     if (textProgress > 0f) {
         drawIsoHouseTexts(
@@ -451,6 +451,7 @@ private fun drawIsoHousePrism(
     canvas: android.graphics.Canvas,
     house: IsoHouse,
     paints: ChartPaints,
+    chartStyle: ChartStyle,
     reveal: Float,
 ) {
     val alpha = smoothStep(reveal)
@@ -507,18 +508,31 @@ private fun drawIsoHousePrism(
     }
     canvas.drawPath(topPath, topPaint)
     canvas.drawPath(topPath, edgePaint)
-    drawIsoHouseCornerSideEdges(canvas, house, edgePaint)
+    drawIsoHouseCornerSideEdges(canvas, house, chartStyle, edgePaint)
 }
 
 private fun drawIsoHouseCornerSideEdges(
     canvas: android.graphics.Canvas,
     house: IsoHouse,
+    chartStyle: ChartStyle,
     edgePaint: Paint,
 ) {
+    val visibleEdgeFloor = topPathBoundsCenterY(house.basePoints)
     house.cornerBasePoints.indices.forEach { index ->
+        if (isNorthCenterCornerEdge(chartStyle, house.houseIndex, index)) return@forEach
         val base = house.cornerBasePoints[index]
         val top = house.cornerTopPoints.getOrNull(index) ?: return@forEach
+        if (base.y < visibleEdgeFloor) return@forEach
         canvas.drawLine(base.x, base.y, top.x, top.y, edgePaint)
+    }
+}
+
+private fun isNorthCenterCornerEdge(chartStyle: ChartStyle, houseIndex: Int, cornerIndex: Int): Boolean {
+    if (chartStyle != ChartStyle.NORTH) return false
+    return when (houseIndex) {
+        0, 3, 6 -> cornerIndex == 2
+        9 -> cornerIndex == 3
+        else -> false
     }
 }
 
@@ -703,6 +717,13 @@ private fun topPathBoundsCenterX(points: List<Offset>): Float {
     val minX = points.minOf { it.x }
     val maxX = points.maxOf { it.x }
     return (minX + maxX) / 2f
+}
+
+private fun topPathBoundsCenterY(points: List<Offset>): Float {
+    if (points.isEmpty()) return 0f
+    val minY = points.minOf { it.y }
+    val maxY = points.maxOf { it.y }
+    return (minY + maxY) / 2f
 }
 
 private fun isoHouseTopColor(houseIndex: Int, selectedProgress: Float): Int {
