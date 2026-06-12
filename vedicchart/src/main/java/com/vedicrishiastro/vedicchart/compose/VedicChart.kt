@@ -44,6 +44,8 @@ private const val MinYawDegrees = -85f
 private const val MaxYawDegrees = 85f
 private const val MinPitchDegrees = -85f
 private const val MaxPitchDegrees = 85f
+private val IsoSurfaceColor: Int = Color.rgb(235, 245, 255)
+private val IsoSelectedSurfaceColor: Int = Color.rgb(255, 236, 196)
 
 data class VedicPlanetSelection(
     val houseIndex: Int,
@@ -312,9 +314,12 @@ private fun drawIsometricVedicChart(
         .sortedBy { it.depth }
     val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
-        color = theme.backgroundColor
+        color = IsoSurfaceColor
     }
     canvas.drawRoundRect(bounds, outerCornerRadius(1f), outerCornerRadius(1f), backgroundPaint)
+    if (chartStyle == ChartStyle.EAST) {
+        drawEastCenterTile(canvas, bounds, projection, lineReveal, paints)
+    }
     restingHouses.forEach { house ->
         drawIsoHousePrism(canvas, house, paints, lineReveal)
     }
@@ -351,6 +356,39 @@ private fun drawIsometricVedicChart(
             houseFilter = { houseIndex -> liftProgressFor(houseIndex, selectedHouseLifts) > 0f },
         )
     }
+}
+
+private fun drawEastCenterTile(
+    canvas: android.graphics.Canvas,
+    bounds: RectF,
+    projection: IsoProjection,
+    reveal: Float,
+    paints: ChartPaints,
+) {
+    val alpha = smoothStep(reveal)
+    if (alpha <= 0f) return
+    val third = bounds.width() / 3f
+    val centerRect = RectF(
+        bounds.left + third,
+        bounds.top + third,
+        bounds.left + third * 2f,
+        bounds.top + third * 2f,
+    )
+    val topPoints = centerRect.corners().map { projection.project(it, z = projection.blockHeight) }
+    val topPath = pointsToPath(topPoints)
+    val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = withAlpha(IsoSurfaceColor, (255 * alpha).toInt())
+    }
+    val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = paints.line.strokeWidth
+        color = withAlpha(paints.line.color, (230 * alpha).toInt())
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+    }
+    canvas.drawPath(topPath, fillPaint)
+    canvas.drawPath(topPath, strokePaint)
 }
 
 private fun buildIsoHouses(
@@ -397,14 +435,14 @@ private fun drawIsoHousePrism(
     val topPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
         color = withAlpha(
-            if (house.selectedProgress > 0f) Color.rgb(255, 236, 196) else Color.rgb(235, 245, 255),
+            if (house.selectedProgress > 0f) IsoSelectedSurfaceColor else IsoSurfaceColor,
             (255 * alpha).toInt(),
         )
     }
     val wirePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = 1.35f
-        color = Color.argb((230 * alpha).toInt(), 0, 0, 0)
+        strokeWidth = paints.line.strokeWidth
+        color = withAlpha(paints.line.color, (230 * alpha).toInt())
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
     }
@@ -1765,16 +1803,48 @@ private fun northHitBoxes(): Array<RelativeBox> {
 private fun selectedHousePath(chartStyle: ChartStyle, houseIndex: Int, bounds: RectF): Path? {
     return when (chartStyle) {
         ChartStyle.NORTH -> northHousePath(houseIndex, bounds)
-        ChartStyle.SOUTH,
-        ChartStyle.EAST -> houseHitBoxes(chartStyle).getOrNull(houseIndex)?.toRect(bounds)?.toPath()
+        ChartStyle.EAST -> eastHousePath(houseIndex, bounds)
+        ChartStyle.SOUTH -> houseHitBoxes(chartStyle).getOrNull(houseIndex)?.toRect(bounds)?.toPath()
     }
 }
 
 private fun houseCornerPoints(chartStyle: ChartStyle, houseIndex: Int, bounds: RectF): List<Offset> {
     return when (chartStyle) {
         ChartStyle.NORTH -> northHouseCornerPoints(houseIndex, bounds)
-        ChartStyle.SOUTH,
-        ChartStyle.EAST -> houseHitBoxes(chartStyle).getOrNull(houseIndex)?.toRect(bounds)?.corners().orEmpty()
+        ChartStyle.EAST -> eastHouseCornerPoints(houseIndex, bounds)
+        ChartStyle.SOUTH -> houseHitBoxes(chartStyle).getOrNull(houseIndex)?.toRect(bounds)?.corners().orEmpty()
+    }
+}
+
+private fun eastHousePath(houseIndex: Int, bounds: RectF): Path? {
+    val points = eastHouseCornerPoints(houseIndex, bounds)
+    if (points.isEmpty()) return null
+    return points.toPath()
+}
+
+private fun eastHouseCornerPoints(houseIndex: Int, bounds: RectF): List<Offset> {
+    val x0 = bounds.left
+    val x1 = bounds.left + bounds.width() / 3f
+    val x2 = bounds.left + bounds.width() * 2f / 3f
+    val x3 = bounds.right
+    val y0 = bounds.top
+    val y1 = bounds.top + bounds.height() / 3f
+    val y2 = bounds.top + bounds.height() * 2f / 3f
+    val y3 = bounds.bottom
+    return when (houseIndex) {
+        0 -> listOf(Offset(x1, y0), Offset(x2, y0), Offset(x2, y1), Offset(x1, y1))
+        1 -> listOf(Offset(x0, y0), Offset(x1, y0), Offset(x1, y1))
+        2 -> listOf(Offset(x0, y0), Offset(x1, y1), Offset(x0, y1))
+        3 -> listOf(Offset(x0, y1), Offset(x1, y1), Offset(x1, y2), Offset(x0, y2))
+        4 -> listOf(Offset(x0, y2), Offset(x1, y2), Offset(x0, y3))
+        5 -> listOf(Offset(x0, y3), Offset(x1, y2), Offset(x1, y3))
+        6 -> listOf(Offset(x1, y2), Offset(x2, y2), Offset(x2, y3), Offset(x1, y3))
+        7 -> listOf(Offset(x2, y2), Offset(x3, y3), Offset(x2, y3))
+        8 -> listOf(Offset(x2, y2), Offset(x3, y2), Offset(x3, y3))
+        9 -> listOf(Offset(x2, y1), Offset(x3, y1), Offset(x3, y2), Offset(x2, y2))
+        10 -> listOf(Offset(x3, y0), Offset(x3, y1), Offset(x2, y1))
+        11 -> listOf(Offset(x2, y0), Offset(x3, y0), Offset(x2, y1))
+        else -> emptyList()
     }
 }
 
@@ -1989,6 +2059,17 @@ private fun RectF.toPath(): Path {
     }
 }
 
+private fun List<Offset>.toPath(): Path {
+    return Path().apply {
+        if (isEmpty()) return@apply
+        moveTo(first().x, first().y)
+        drop(1).forEach { point ->
+            lineTo(point.x, point.y)
+        }
+        close()
+    }
+}
+
 private fun RectF.corners(): List<Offset> {
     return listOf(
         Offset(left, top),
@@ -2022,23 +2103,29 @@ private fun southHouseBoxes(): Array<FloatArray> {
 
 private fun eastHitBoxes(): Array<RelativeBox> {
     return arrayOf(
-        RelativeBox(0.00f, 0.00f, 0.33f, 0.27f), RelativeBox(0.33f, 0.00f, 0.67f, 0.33f),
-        RelativeBox(0.67f, 0.00f, 1.00f, 0.27f), RelativeBox(0.67f, 0.27f, 1.00f, 0.52f),
-        RelativeBox(0.67f, 0.67f, 1.00f, 1.00f), RelativeBox(0.33f, 0.67f, 0.67f, 1.00f),
-        RelativeBox(0.00f, 0.67f, 0.33f, 1.00f), RelativeBox(0.00f, 0.27f, 0.33f, 0.52f),
-        RelativeBox(0.20f, 0.26f, 0.47f, 0.47f), RelativeBox(0.53f, 0.26f, 0.80f, 0.47f),
-        RelativeBox(0.53f, 0.53f, 0.80f, 0.80f), RelativeBox(0.20f, 0.53f, 0.47f, 0.80f),
+        RelativeBox(0.36f, 0.02f, 0.64f, 0.31f),
+        RelativeBox(0.17f, 0.02f, 0.33f, 0.18f),
+        RelativeBox(0.02f, 0.16f, 0.18f, 0.33f),
+        RelativeBox(0.02f, 0.36f, 0.31f, 0.64f),
+        RelativeBox(0.02f, 0.69f, 0.18f, 0.84f),
+        RelativeBox(0.17f, 0.82f, 0.33f, 0.98f),
+        RelativeBox(0.36f, 0.69f, 0.64f, 0.98f),
+        RelativeBox(0.67f, 0.82f, 0.83f, 0.98f),
+        RelativeBox(0.82f, 0.69f, 0.98f, 0.84f),
+        RelativeBox(0.69f, 0.36f, 0.98f, 0.64f),
+        RelativeBox(0.82f, 0.16f, 0.98f, 0.33f),
+        RelativeBox(0.67f, 0.02f, 0.83f, 0.18f),
     )
 }
 
 private fun eastHouseBoxes(): Array<FloatArray> {
     return arrayOf(
-        floatArrayOf(0.00f, 0.00f, 0.33f, 0.27f), floatArrayOf(0.33f, 0.00f, 0.67f, 0.33f),
-        floatArrayOf(0.67f, 0.00f, 1.00f, 0.27f), floatArrayOf(0.67f, 0.27f, 1.00f, 0.52f),
-        floatArrayOf(0.67f, 0.67f, 1.00f, 1.00f), floatArrayOf(0.33f, 0.67f, 0.67f, 1.00f),
-        floatArrayOf(0.00f, 0.67f, 0.33f, 1.00f), floatArrayOf(0.00f, 0.27f, 0.33f, 0.52f),
-        floatArrayOf(0.20f, 0.26f, 0.47f, 0.47f), floatArrayOf(0.53f, 0.26f, 0.80f, 0.47f),
-        floatArrayOf(0.53f, 0.53f, 0.80f, 0.80f), floatArrayOf(0.20f, 0.53f, 0.47f, 0.80f),
+        floatArrayOf(0.36f, 0.02f, 0.64f, 0.31f), floatArrayOf(0.17f, 0.02f, 0.33f, 0.18f),
+        floatArrayOf(0.02f, 0.16f, 0.18f, 0.33f), floatArrayOf(0.02f, 0.36f, 0.31f, 0.64f),
+        floatArrayOf(0.02f, 0.69f, 0.18f, 0.84f), floatArrayOf(0.17f, 0.82f, 0.33f, 0.98f),
+        floatArrayOf(0.36f, 0.69f, 0.64f, 0.98f), floatArrayOf(0.67f, 0.82f, 0.83f, 0.98f),
+        floatArrayOf(0.82f, 0.69f, 0.98f, 0.84f), floatArrayOf(0.69f, 0.36f, 0.98f, 0.64f),
+        floatArrayOf(0.82f, 0.16f, 0.98f, 0.33f), floatArrayOf(0.67f, 0.02f, 0.83f, 0.18f),
     )
 }
 

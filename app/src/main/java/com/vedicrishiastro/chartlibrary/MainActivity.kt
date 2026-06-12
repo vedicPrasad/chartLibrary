@@ -65,7 +65,7 @@ private fun ChartDemoScreen() {
     ) {
         ChartSection("North Indian", ChartStyle.NORTH, ChartTheme.light(), houses)
         ChartSection("South Indian", ChartStyle.SOUTH, ChartTheme.temple(), houses)
-        ChartSection("East Indian", ChartStyle.EAST, ChartTheme.dark(), houses)
+        ChartSection("East Indian", ChartStyle.EAST, ChartTheme.temple(), houses)
     }
 }
 
