@@ -461,7 +461,7 @@ private fun drawIsoHousePrism(
         style = Paint.Style.FILL
         color = withAlpha(topColor, (255 * alpha).toInt())
     }
-    val sideEdgePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    val edgePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeWidth = paints.grid.strokeWidth
         color = withAlpha(IsoEdgeColor, (230 * alpha).toInt())
@@ -501,9 +501,10 @@ private fun drawIsoHousePrism(
             color = withAlpha(sideColor, (255 * alpha).toInt())
         }
         canvas.drawPath(wallPath, wallPaint)
-        canvas.drawPath(wallPath, sideEdgePaint)
+        canvas.drawPath(wallPath, edgePaint)
     }
     canvas.drawPath(topPath, topPaint)
+    canvas.drawPath(topPath, edgePaint)
 }
 
 private fun drawIsoHouseTexts(
