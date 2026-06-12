@@ -758,230 +758,6 @@ private class IsoProjection(
     }
 }
 
-private fun drawNorthChart(
-    canvas: android.graphics.Canvas,
-    bounds: RectF,
-    houses: List<ZodiacHouse>,
-    paints: ChartPaints,
-    theme: ChartTheme,
-    lineReveal: Float,
-    textProgress: Float,
-    selectedHouseLifts: List<SelectedHouseLift>,
-    outerCornerRadius: Float,
-    usePlanetIcons: Boolean,
-) {
-    val border = Path().apply {
-        addRoundRect(bounds, outerCornerRadius, outerCornerRadius, Path.Direction.CW)
-    }
-    val diagonalOne = Path().apply {
-        moveTo(bounds.left, bounds.top)
-        lineTo(bounds.right, bounds.bottom)
-    }
-    val diagonalTwo = Path().apply {
-        moveTo(bounds.right, bounds.top)
-        lineTo(bounds.left, bounds.bottom)
-    }
-    val diamond = northCurvePath(bounds)
-    drawRevealedPaths(
-        canvas = canvas,
-        paths = listOf(
-            RevealedPath(border, paints.line),
-            RevealedPath(diagonalOne, paints.grid),
-            RevealedPath(diagonalTwo, paints.grid),
-            RevealedPath(diamond, paints.grid),
-        ),
-        reveal = lineReveal,
-    )
-    val slots = northSlots()
-    if (textProgress > 0f) {
-        drawNorthHouseTexts(canvas, bounds, slots, houses, paints, theme, textProgress, selectedHouseLifts, usePlanetIcons)
-    }
-    drawSelectedHouseHighlights(canvas, bounds, selectedHouseLifts, ChartStyle.NORTH, paints)
-    if (textProgress > 0f && selectedHouseLifts.isNotEmpty()) {
-        drawNorthHouseTexts(
-            canvas,
-            bounds,
-            slots,
-            houses,
-            paints,
-            theme,
-            textProgress,
-            selectedHouseLifts,
-            usePlanetIcons,
-            houseFilter = { houseIndex -> liftProgressFor(houseIndex, selectedHouseLifts) > 0f },
-        )
-    }
-}
-
-private fun drawSouthChart(
-    canvas: android.graphics.Canvas,
-    bounds: RectF,
-    houses: List<ZodiacHouse>,
-    paints: ChartPaints,
-    theme: ChartTheme,
-    lineReveal: Float,
-    textProgress: Float,
-    selectedHouseLifts: List<SelectedHouseLift>,
-    outerCornerRadius: Float,
-    usePlanetIcons: Boolean,
-) {
-    setPaintAlpha(paints.line, smoothStep(lineReveal))
-    setPaintAlpha(paints.grid, smoothStep(lineReveal))
-    val cell = bounds.width() / 4f
-    canvas.drawRoundRect(bounds, outerCornerRadius, outerCornerRadius, paints.line)
-    for (index in 1 until 4) {
-        canvas.drawLine(bounds.left + index * cell, bounds.top, bounds.left + index * cell, bounds.bottom, paints.grid)
-        canvas.drawLine(bounds.left, bounds.top + index * cell, bounds.right, bounds.top + index * cell, paints.grid)
-    }
-    val center = RectF(bounds.left + cell, bounds.top + cell, bounds.left + cell * 3f, bounds.top + cell * 3f)
-    canvas.drawRect(center, paints.fill)
-    canvas.drawRect(center, paints.grid)
-    setPaintAlpha(paints.line, 1f)
-    setPaintAlpha(paints.grid, 1f)
-
-    val boxes = arrayOf(
-        floatArrayOf(0.00f, 0.00f, 0.25f, 0.25f), floatArrayOf(0.25f, 0.00f, 0.50f, 0.25f),
-        floatArrayOf(0.50f, 0.00f, 0.75f, 0.25f), floatArrayOf(0.75f, 0.00f, 1.00f, 0.25f),
-        floatArrayOf(0.75f, 0.25f, 1.00f, 0.50f), floatArrayOf(0.75f, 0.50f, 1.00f, 0.75f),
-        floatArrayOf(0.75f, 0.75f, 1.00f, 1.00f), floatArrayOf(0.50f, 0.75f, 0.75f, 1.00f),
-        floatArrayOf(0.25f, 0.75f, 0.50f, 1.00f), floatArrayOf(0.00f, 0.75f, 0.25f, 1.00f),
-        floatArrayOf(0.00f, 0.50f, 0.25f, 0.75f), floatArrayOf(0.00f, 0.25f, 0.25f, 0.50f),
-    )
-    if (textProgress > 0f) {
-        drawHouseTexts(canvas, bounds, boxes, houses, paints, theme, textProgress, selectedHouseLifts, ChartStyle.SOUTH, usePlanetIcons)
-    }
-    drawSelectedHouseHighlights(canvas, bounds, selectedHouseLifts, ChartStyle.SOUTH, paints)
-    if (textProgress > 0f && selectedHouseLifts.isNotEmpty()) {
-        drawHouseTexts(
-            canvas,
-            bounds,
-            boxes,
-            houses,
-            paints,
-            theme,
-            textProgress,
-            selectedHouseLifts,
-            ChartStyle.SOUTH,
-            usePlanetIcons,
-            houseFilter = { houseIndex -> liftProgressFor(houseIndex, selectedHouseLifts) > 0f },
-        )
-    }
-}
-
-private fun drawEastChart(
-    canvas: android.graphics.Canvas,
-    bounds: RectF,
-    houses: List<ZodiacHouse>,
-    paints: ChartPaints,
-    theme: ChartTheme,
-    lineReveal: Float,
-    textProgress: Float,
-    selectedHouseLifts: List<SelectedHouseLift>,
-    outerCornerRadius: Float,
-    usePlanetIcons: Boolean,
-) {
-    setPaintAlpha(paints.line, smoothStep(lineReveal))
-    setPaintAlpha(paints.grid, smoothStep(lineReveal))
-    val third = bounds.width() / 3f
-    canvas.drawRoundRect(bounds, outerCornerRadius, outerCornerRadius, paints.line)
-    canvas.drawLine(bounds.left + third, bounds.top, bounds.left + third, bounds.bottom, paints.grid)
-    canvas.drawLine(bounds.left + third * 2f, bounds.top, bounds.left + third * 2f, bounds.bottom, paints.grid)
-    canvas.drawLine(bounds.left, bounds.top + third, bounds.right, bounds.top + third, paints.grid)
-    canvas.drawLine(bounds.left, bounds.top + third * 2f, bounds.right, bounds.top + third * 2f, paints.grid)
-    canvas.drawLine(bounds.left, bounds.top, bounds.left + third, bounds.top + third, paints.grid)
-    canvas.drawLine(bounds.right, bounds.top, bounds.left + third * 2f, bounds.top + third, paints.grid)
-    canvas.drawLine(bounds.right, bounds.bottom, bounds.left + third * 2f, bounds.top + third * 2f, paints.grid)
-    canvas.drawLine(bounds.left, bounds.bottom, bounds.left + third, bounds.top + third * 2f, paints.grid)
-    setPaintAlpha(paints.line, 1f)
-    setPaintAlpha(paints.grid, 1f)
-
-    val boxes = arrayOf(
-        floatArrayOf(0.00f, 0.00f, 0.33f, 0.27f), floatArrayOf(0.33f, 0.00f, 0.67f, 0.33f),
-        floatArrayOf(0.67f, 0.00f, 1.00f, 0.27f), floatArrayOf(0.67f, 0.27f, 1.00f, 0.52f),
-        floatArrayOf(0.67f, 0.67f, 1.00f, 1.00f), floatArrayOf(0.33f, 0.67f, 0.67f, 1.00f),
-        floatArrayOf(0.00f, 0.67f, 0.33f, 1.00f), floatArrayOf(0.00f, 0.27f, 0.33f, 0.52f),
-        floatArrayOf(0.20f, 0.26f, 0.47f, 0.47f), floatArrayOf(0.53f, 0.26f, 0.80f, 0.47f),
-        floatArrayOf(0.53f, 0.53f, 0.80f, 0.80f), floatArrayOf(0.20f, 0.53f, 0.47f, 0.80f),
-    )
-    if (textProgress > 0f) {
-        drawHouseTexts(canvas, bounds, boxes, houses, paints, theme, textProgress, selectedHouseLifts, ChartStyle.EAST, usePlanetIcons)
-    }
-    drawSelectedHouseHighlights(canvas, bounds, selectedHouseLifts, ChartStyle.EAST, paints)
-    if (textProgress > 0f && selectedHouseLifts.isNotEmpty()) {
-        drawHouseTexts(
-            canvas,
-            bounds,
-            boxes,
-            houses,
-            paints,
-            theme,
-            textProgress,
-            selectedHouseLifts,
-            ChartStyle.EAST,
-            usePlanetIcons,
-            houseFilter = { houseIndex -> liftProgressFor(houseIndex, selectedHouseLifts) > 0f },
-        )
-    }
-}
-
-private fun drawSelectedHouseOverlay(
-    canvas: android.graphics.Canvas,
-    bounds: RectF,
-    houses: List<ZodiacHouse>,
-    paints: ChartPaints,
-    theme: ChartTheme,
-    textProgress: Float,
-    selectedHouseLifts: List<SelectedHouseLift>,
-    chartStyle: ChartStyle,
-    usePlanetIcons: Boolean,
-) {
-    if (selectedHouseLifts.isEmpty()) return
-    drawSelectedHouseHighlights(canvas, bounds, selectedHouseLifts, chartStyle, paints)
-    if (textProgress <= 0f) return
-    val selectedOnly: (Int) -> Boolean = { houseIndex ->
-        liftProgressFor(houseIndex, selectedHouseLifts) > 0f
-    }
-    when (chartStyle) {
-        ChartStyle.SOUTH -> drawHouseTexts(
-            canvas = canvas,
-            bounds = bounds,
-            boxes = southHouseBoxes(),
-            houses = houses,
-            paints = paints,
-            theme = theme,
-            textProgress = textProgress,
-            selectedHouseLifts = selectedHouseLifts,
-            chartStyle = ChartStyle.SOUTH,
-            usePlanetIcons = usePlanetIcons,
-            houseFilter = selectedOnly,
-        )
-        ChartStyle.EAST -> drawHouseTexts(
-            canvas = canvas,
-            bounds = bounds,
-            boxes = eastHouseBoxes(),
-            houses = houses,
-            paints = paints,
-            theme = theme,
-            textProgress = textProgress,
-            selectedHouseLifts = selectedHouseLifts,
-            chartStyle = ChartStyle.EAST,
-            usePlanetIcons = usePlanetIcons,
-            houseFilter = selectedOnly,
-        )
-        else -> drawNorthHouseTexts(
-            canvas = canvas,
-            bounds = bounds,
-            slots = northSlots(),
-            houses = houses,
-            paints = paints,
-            theme = theme,
-            textProgress = textProgress,
-            selectedHouseLifts = selectedHouseLifts,
-            usePlanetIcons = usePlanetIcons,
-            houseFilter = selectedOnly,
-        )
-    }
-}
 
 private fun drawHouseTexts(
     canvas: android.graphics.Canvas,
@@ -1019,35 +795,6 @@ private fun drawHouseTexts(
             textLiftTransform(chartStyle, index, bounds, liftProgress),
             usePlanetIcons,
         )
-    }
-}
-
-private fun drawNorthHouseTexts(
-    canvas: android.graphics.Canvas,
-    bounds: RectF,
-    slots: Array<NorthHouseSlot>,
-    houses: List<ZodiacHouse>,
-    paints: ChartPaints,
-    theme: ChartTheme,
-    textProgress: Float,
-    selectedHouseLifts: List<SelectedHouseLift>,
-    usePlanetIcons: Boolean,
-    houseFilter: ((Int) -> Boolean)? = null,
-) {
-    val count = min(min(slots.size, houses.size), 12)
-    for (index in 0 until count) {
-        if (houseFilter != null && !houseFilter(index)) continue
-        val slot = slots[index]
-        val signBox = slot.signBox.toRect(bounds)
-        val planetBox = planetBoxAvoidingSign(
-            planetBox = slot.planetBox.toRect(bounds).withInset(bounds.width() * 0.012f),
-            signBox = signBox,
-            gap = planetSignGap(bounds),
-        )
-        val liftProgress = liftProgressFor(index, selectedHouseLifts)
-        val liftTransform = textLiftTransform(ChartStyle.NORTH, index, bounds, liftProgress)
-        drawSign(canvas, houses[index], signBox, paints, theme, textProgress, liftProgress, liftTransform)
-        drawPlanets(canvas, houses[index], planetBox, paints, slot.maxPlanetRows, textProgress, liftProgress, liftTransform, usePlanetIcons)
     }
 }
 
@@ -1293,56 +1040,6 @@ private fun hitTestHouse(offset: Offset, bounds: RectF, chartStyle: ChartStyle):
     }
 }
 
-private fun hitTestPlanet(
-    offset: Offset,
-    bounds: RectF,
-    houses: List<ZodiacHouse>,
-    chartStyle: ChartStyle,
-    chartTheme: ChartTheme,
-    density: Float,
-    usePlanetIcons: Boolean,
-    selectedHouseLifts: List<SelectedHouseLift>,
-): VedicPlanetSelection? {
-    if (!bounds.contains(offset.x, offset.y)) return null
-    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        textAlign = Paint.Align.CENTER
-        isFakeBoldText = true
-        textSize = chartTheme.planetTextSizeSp * density
-    }
-    val count = min(houses.size, 12)
-    for (houseIndex in 0 until count) {
-        val planetBox = planetBoxFor(chartStyle, houseIndex, bounds, paint.textSize) ?: continue
-        val labels = planetLabels(houses[houseIndex], usePlanetIcons)
-        if (labels.isEmpty()) continue
-        val names = planetNames(houses[houseIndex])
-        val layout = buildPlanetGrid(
-            tokens = labels,
-            box = planetBox,
-            paint = paint,
-            baseTextSize = chartTheme.planetTextSizeSp * density,
-            maxRows = maxPlanetRowsFor(chartStyle, houseIndex),
-        )
-        val liftProgress = liftProgressFor(houseIndex, selectedHouseLifts)
-        val transform = textLiftTransform(chartStyle, houseIndex, bounds, liftProgress)
-        layout.tokens.forEachIndexed { planetIndex, token ->
-            val row = planetIndex / layout.columns
-            val column = planetIndex % layout.columns
-            val tokenRect = planetTokenRect(planetBox, layout, row, column, token, paint).withInset(-2f * density)
-            val hitRect = transformedRect(tokenRect, transform)
-            if (hitRect.contains(offset.x, offset.y)) {
-                val planetName = names.getOrNull(planetIndex).orEmpty()
-                return VedicPlanetSelection(
-                    houseIndex = houseIndex,
-                    planetIndex = planetIndex,
-                    planetName = planetName.ifBlank { labels[planetIndex] },
-                    planetLabel = labels[planetIndex],
-                    house = houses[houseIndex],
-                )
-            }
-        }
-    }
-    return null
-}
 
 private fun hitTestIsoHouse(
     offset: Offset,
@@ -1440,63 +1137,12 @@ private fun pointInPolygon(point: Offset, polygon: List<Offset>): Boolean {
     return inside
 }
 
-private fun planetBoxFor(
-    chartStyle: ChartStyle,
-    houseIndex: Int,
-    bounds: RectF,
-    planetTextSize: Float,
-): RectF? {
-    return when (chartStyle) {
-        ChartStyle.NORTH -> northSlots().getOrNull(houseIndex)?.let { slot ->
-            planetBoxAvoidingSign(
-                planetBox = slot.planetBox.toRect(bounds).withInset(bounds.width() * 0.012f),
-                signBox = slot.signBox.toRect(bounds),
-                gap = planetSignGap(bounds),
-            )
-        }
-        ChartStyle.SOUTH,
-        ChartStyle.EAST -> houseHitBoxes(chartStyle).getOrNull(houseIndex)?.toRect(bounds)?.let { box ->
-            val inset = 3f
-            val signHeight = min(box.height() * 0.34f, planetTextSize * 1.7f)
-            val signBox = RectF(box.left + inset, box.top + inset, box.right - inset, box.top + inset + signHeight)
-            planetBoxAvoidingSign(
-                planetBox = RectF(box.left + inset, signBox.bottom + planetSignGap(box), box.right - inset, box.bottom - inset),
-                signBox = signBox,
-                gap = planetSignGap(box),
-            )
-        }
-    }
-}
 
 private fun maxPlanetRowsFor(chartStyle: ChartStyle, houseIndex: Int): Int {
     return when (chartStyle) {
         ChartStyle.NORTH -> northSlots().getOrNull(houseIndex)?.maxPlanetRows ?: 4
         else -> if (usesComplexPlanetLayout(houseIndex)) 4 else 2
     }
-}
-
-private fun transformedRect(rect: RectF, transform: TextLiftTransform?): RectF {
-    if (transform == null) return rect
-    val matrix = Matrix().apply {
-        setScale(transform.scale, transform.scale, transform.pivotX, transform.pivotY)
-        postTranslate(transform.x, transform.y)
-    }
-    val result = RectF(rect)
-    matrix.mapRect(result)
-    return result
-}
-
-private fun rotatePoint(point: Offset, pivot: Offset, degrees: Float): Offset {
-    if (degrees == 0f) return point
-    val radians = degrees * PI.toFloat() / 180f
-    val cosValue = kotlin.math.cos(radians)
-    val sinValue = kotlin.math.sin(radians)
-    val dx = point.x - pivot.x
-    val dy = point.y - pivot.y
-    return Offset(
-        x = pivot.x + dx * cosValue - dy * sinValue,
-        y = pivot.y + dx * sinValue + dy * cosValue,
-    )
 }
 
 private fun clampYaw(value: Float): Float {
@@ -1586,24 +1232,6 @@ private fun drawSelectedHouseHighlight(
     canvas.drawPath(liftedPath, strokePaint)
 }
 
-private fun drawSelectedHouseHighlights(
-    canvas: android.graphics.Canvas,
-    bounds: RectF,
-    selectedHouseLifts: List<SelectedHouseLift>,
-    chartStyle: ChartStyle,
-    paints: ChartPaints,
-) {
-    selectedHouseLifts.forEach { lift ->
-        drawSelectedHouseHighlight(
-            canvas = canvas,
-            bounds = bounds,
-            selectedHouseIndex = lift.houseIndex,
-            chartStyle = chartStyle,
-            progress = lift.progress,
-            paints = paints,
-        )
-    }
-}
 
 private fun liftProgressFor(houseIndex: Int, selectedHouseLifts: List<SelectedHouseLift>): Float {
     return selectedHouseLifts
@@ -1652,46 +1280,6 @@ private fun samplePath(path: Path, preferredCount: Int): List<Offset> {
     return List(count) { index ->
         measure.getPosTan(length * index / count, point, null)
         Offset(point[0], point[1])
-    }
-}
-
-private fun northCurvePath(bounds: RectF): Path {
-    val w = bounds.width()
-    val h = bounds.height()
-    val top = relPoint(bounds, 0.5f, 0f)
-    val right = relPoint(bounds, 1f, 0.5f)
-    val bottom = relPoint(bounds, 0.5f, 1f)
-    val left = relPoint(bounds, 0f, 0.5f)
-    val northEast = relPoint(bounds, 0.75f, 0.25f)
-    val southEast = relPoint(bounds, 0.75f, 0.75f)
-    val southWest = relPoint(bounds, 0.25f, 0.75f)
-    val northWest = relPoint(bounds, 0.25f, 0.25f)
-
-    return Path().apply {
-        moveTo(top.x, top.y)
-        curveTopToNorthEast(top, northEast, w, h)
-        curveNorthEastToRight(northEast, right, w, h)
-        curveRightToSouthEast(right, southEast, w, h)
-        curveSouthEastToBottom(southEast, bottom, w, h)
-        curveBottomToSouthWest(bottom, southWest, w, h)
-        curveSouthWestToLeft(southWest, left, w, h)
-        curveLeftToNorthWest(left, northWest, w, h)
-        curveNorthWestToTop(northWest, top, w, h)
-        close()
-    }
-}
-
-private fun drawRevealedPaths(
-    canvas: android.graphics.Canvas,
-    paths: List<RevealedPath>,
-    reveal: Float,
-) {
-    val alpha = smoothStep(reveal)
-    if (alpha <= 0f) return
-    paths.forEach { item ->
-        setPaintAlpha(item.paint, alpha)
-        canvas.drawPath(item.path, item.paint)
-        setPaintAlpha(item.paint, 1f)
     }
 }
 
@@ -1757,34 +1345,6 @@ private fun smoothStep(value: Float): Float {
     return x * x * (3f - 2f * x)
 }
 
-private fun wrapText(text: String, paint: Paint, maxWidth: Float, maxLines: Int): List<String> {
-    if (text.isBlank()) return emptyList()
-    val words = ArrayDeque(text.trim().split("\\s+".toRegex()).filter { it.isNotEmpty() })
-    val lines = mutableListOf<String>()
-    val current = StringBuilder()
-    while (words.isNotEmpty() && lines.size < maxLines) {
-        val word = words.removeFirst()
-        val candidate = if (current.isEmpty()) word else "$current $word"
-        if (paint.measureText(candidate) <= maxWidth) {
-            current.clear()
-            current.append(candidate)
-        } else if (current.isNotEmpty()) {
-            lines.add(current.toString())
-            current.clear()
-            words.addFirst(word)
-        } else {
-            lines.add(ellipsize(word, paint, maxWidth))
-        }
-    }
-    if (current.isNotEmpty() && lines.size < maxLines) {
-        lines.add(current.toString())
-    }
-    if (words.isNotEmpty() && lines.isNotEmpty()) {
-        val last = lines.last()
-        lines[lines.lastIndex] = ellipsize("$last...", paint, maxWidth)
-    }
-    return lines
-}
 
 private fun fitSingleLine(
     text: String,
@@ -2194,16 +1754,7 @@ private fun southHitBoxes(): Array<RelativeBox> {
     )
 }
 
-private fun southHouseBoxes(): Array<FloatArray> {
-    return arrayOf(
-        floatArrayOf(0.00f, 0.00f, 0.25f, 0.25f), floatArrayOf(0.25f, 0.00f, 0.50f, 0.25f),
-        floatArrayOf(0.50f, 0.00f, 0.75f, 0.25f), floatArrayOf(0.75f, 0.00f, 1.00f, 0.25f),
-        floatArrayOf(0.75f, 0.25f, 1.00f, 0.50f), floatArrayOf(0.75f, 0.50f, 1.00f, 0.75f),
-        floatArrayOf(0.75f, 0.75f, 1.00f, 1.00f), floatArrayOf(0.50f, 0.75f, 0.75f, 1.00f),
-        floatArrayOf(0.25f, 0.75f, 0.50f, 1.00f), floatArrayOf(0.00f, 0.75f, 0.25f, 1.00f),
-        floatArrayOf(0.00f, 0.50f, 0.25f, 0.75f), floatArrayOf(0.00f, 0.25f, 0.25f, 0.50f),
-    )
-}
+
 
 private fun eastHitBoxes(): Array<RelativeBox> {
     return arrayOf(
@@ -2222,16 +1773,7 @@ private fun eastHitBoxes(): Array<RelativeBox> {
     )
 }
 
-private fun eastHouseBoxes(): Array<FloatArray> {
-    return arrayOf(
-        floatArrayOf(0.36f, 0.02f, 0.64f, 0.31f), floatArrayOf(0.17f, 0.02f, 0.33f, 0.18f),
-        floatArrayOf(0.02f, 0.16f, 0.18f, 0.33f), floatArrayOf(0.02f, 0.36f, 0.31f, 0.64f),
-        floatArrayOf(0.02f, 0.69f, 0.18f, 0.84f), floatArrayOf(0.17f, 0.82f, 0.33f, 0.98f),
-        floatArrayOf(0.36f, 0.69f, 0.64f, 0.98f), floatArrayOf(0.67f, 0.82f, 0.83f, 0.98f),
-        floatArrayOf(0.82f, 0.69f, 0.98f, 0.84f), floatArrayOf(0.69f, 0.36f, 0.98f, 0.64f),
-        floatArrayOf(0.82f, 0.16f, 0.98f, 0.33f), floatArrayOf(0.67f, 0.02f, 0.83f, 0.18f),
-    )
-}
+
 
 private fun RelativeBox.toRect(bounds: RectF): RectF {
     return RectF(
