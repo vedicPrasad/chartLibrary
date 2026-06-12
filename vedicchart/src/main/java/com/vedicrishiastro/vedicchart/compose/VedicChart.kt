@@ -1,7 +1,6 @@
 package com.vedicrishiastro.vedicchart.compose
 
 import android.graphics.Color
-import android.graphics.DashPathEffect
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
@@ -408,7 +407,6 @@ private fun drawIsoHousePrism(
         color = Color.argb((230 * alpha).toInt(), 0, 0, 0)
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
-        pathEffect = DashPathEffect(floatArrayOf(14f, 14f), 0f)
     }
     val basePath = pointsToPath(house.basePoints)
     val topPath = pointsToPath(house.topPoints)
