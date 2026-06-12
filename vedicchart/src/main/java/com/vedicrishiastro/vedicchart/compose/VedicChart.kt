@@ -46,6 +46,8 @@ private const val MinPitchDegrees = -85f
 private const val MaxPitchDegrees = 85f
 private val IsoSurfaceColor: Int = Color.rgb(235, 245, 255)
 private val IsoSelectedSurfaceColor: Int = Color.rgb(255, 236, 196)
+private val IsoOrangeSideColor: Int = Color.rgb(245, 137, 38)
+private val IsoBlueSideColor: Int = Color.rgb(33, 128, 238)
 private const val EastBlockGapRatio = 0f
 
 data class VedicPlanetSelection(
@@ -268,6 +270,13 @@ private fun DrawScope.ChartPaints(theme: ChartTheme): ChartPaints {
             strokeCap = Paint.Cap.ROUND
             strokeJoin = Paint.Join.ROUND
         },
+        grid = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = theme.borderWidth * density
+            color = gridLineColor(theme.backgroundColor)
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+        },
         accent = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
             strokeWidth = theme.borderWidth * 1.4f * density
@@ -325,7 +334,6 @@ private fun drawIsometricVedicChart(
         drawIsoHousePrism(canvas, house, paints, lineReveal)
     }
     if (chartStyle == ChartStyle.EAST) {
-        drawEastGridOverlay(canvas, bounds, projection, z = 0.5f, reveal = lineReveal, paints = paints)
         drawEastGridOverlay(canvas, bounds, projection, z = projection.blockHeight + 0.5f, reveal = lineReveal, paints = paints)
     }
     if (textProgress > 0f) {
@@ -419,11 +427,16 @@ private fun buildIsoHouses(
             sourcePoints = points,
             basePoints = basePoints,
             topPoints = topPoints,
-            cornerBasePoints = cornerPoints.map { projection.project(it, z = extraZ) },
-            cornerTopPoints = cornerPoints.map { projection.project(it, z = height + extraZ) },
+            outerVerticalEdges = cornerPoints
+                .filter { isOuterChartPoint(it, bounds) }
+                .map { sourcePoint ->
+                    IsoVerticalEdge(
+                        base = projection.project(sourcePoint, z = extraZ),
+                        top = projection.project(sourcePoint, z = height + extraZ),
+                    )
+                },
             wallEdgeVisible = if (connectedEastBlock) eastOuterEdgeVisibility(points, bounds) else List(points.size) { true },
             drawTopOutline = !connectedEastBlock,
-            drawBaseOutline = !connectedEastBlock,
             depth = basePoints.map { it.y }.average().toFloat(),
             selectedProgress = selectedLift,
             extraZ = extraZ,
@@ -452,8 +465,8 @@ private fun drawIsoHousePrism(
     }
     val wirePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = paints.line.strokeWidth
-        color = withAlpha(paints.line.color, (230 * alpha).toInt())
+        strokeWidth = paints.grid.strokeWidth
+        color = withAlpha(paints.grid.color, (230 * alpha).toInt())
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
     }
@@ -482,24 +495,16 @@ private fun drawIsoHousePrism(
         val warmSide = centerX >= topPathBoundsCenterX(house.topPoints)
         val wallPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.FILL
-            color = withAlpha(
-                if (warmSide) Color.rgb(245, 137, 38) else Color.rgb(33, 128, 238),
-                (245 * alpha).toInt(),
-            )
+            color = if (warmSide) IsoOrangeSideColor else IsoBlueSideColor
         }
         canvas.drawPath(wallPath, wallPaint)
     }
     canvas.drawPath(topPath, topPaint)
-    if (house.drawBaseOutline) {
-        canvas.drawPath(basePath, wirePaint)
-    }
     if (house.drawTopOutline) {
         canvas.drawPath(topPath, wirePaint)
     }
-    house.cornerBasePoints.indices.forEach { index ->
-        val base = house.cornerBasePoints[index]
-        val top = house.cornerTopPoints.getOrNull(index) ?: return@forEach
-        canvas.drawLine(base.x, base.y, top.x, top.y, wirePaint)
+    house.outerVerticalEdges.forEach { edge ->
+        canvas.drawLine(edge.base.x, edge.base.y, edge.top.x, edge.top.y, wirePaint)
     }
 }
 
@@ -520,8 +525,8 @@ private fun drawEastGridOverlay(
     val y2 = bounds.top + third * 2f
     val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = paints.line.strokeWidth
-        color = withAlpha(paints.line.color, (230 * alpha).toInt())
+        strokeWidth = paints.grid.strokeWidth
+        color = withAlpha(paints.grid.color, (230 * alpha).toInt())
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
     }
@@ -779,9 +784,9 @@ private fun drawNorthChart(
         canvas = canvas,
         paths = listOf(
             RevealedPath(border, paints.line),
-            RevealedPath(diagonalOne, paints.line),
-            RevealedPath(diagonalTwo, paints.line),
-            RevealedPath(diamond, paints.accent),
+            RevealedPath(diagonalOne, paints.grid),
+            RevealedPath(diagonalTwo, paints.grid),
+            RevealedPath(diamond, paints.grid),
         ),
         reveal = lineReveal,
     )
@@ -819,16 +824,18 @@ private fun drawSouthChart(
     usePlanetIcons: Boolean,
 ) {
     setPaintAlpha(paints.line, smoothStep(lineReveal))
+    setPaintAlpha(paints.grid, smoothStep(lineReveal))
     val cell = bounds.width() / 4f
     canvas.drawRoundRect(bounds, outerCornerRadius, outerCornerRadius, paints.line)
     for (index in 1 until 4) {
-        canvas.drawLine(bounds.left + index * cell, bounds.top, bounds.left + index * cell, bounds.bottom, paints.line)
-        canvas.drawLine(bounds.left, bounds.top + index * cell, bounds.right, bounds.top + index * cell, paints.line)
+        canvas.drawLine(bounds.left + index * cell, bounds.top, bounds.left + index * cell, bounds.bottom, paints.grid)
+        canvas.drawLine(bounds.left, bounds.top + index * cell, bounds.right, bounds.top + index * cell, paints.grid)
     }
     val center = RectF(bounds.left + cell, bounds.top + cell, bounds.left + cell * 3f, bounds.top + cell * 3f)
     canvas.drawRect(center, paints.fill)
-    canvas.drawRect(center, paints.line)
+    canvas.drawRect(center, paints.grid)
     setPaintAlpha(paints.line, 1f)
+    setPaintAlpha(paints.grid, 1f)
 
     val boxes = arrayOf(
         floatArrayOf(0.00f, 0.00f, 0.25f, 0.25f), floatArrayOf(0.25f, 0.00f, 0.50f, 0.25f),
@@ -872,19 +879,19 @@ private fun drawEastChart(
     usePlanetIcons: Boolean,
 ) {
     setPaintAlpha(paints.line, smoothStep(lineReveal))
-    setPaintAlpha(paints.accent, smoothStep(lineReveal))
+    setPaintAlpha(paints.grid, smoothStep(lineReveal))
     val third = bounds.width() / 3f
     canvas.drawRoundRect(bounds, outerCornerRadius, outerCornerRadius, paints.line)
-    canvas.drawLine(bounds.left + third, bounds.top, bounds.left + third, bounds.bottom, paints.line)
-    canvas.drawLine(bounds.left + third * 2f, bounds.top, bounds.left + third * 2f, bounds.bottom, paints.line)
-    canvas.drawLine(bounds.left, bounds.top + third, bounds.right, bounds.top + third, paints.line)
-    canvas.drawLine(bounds.left, bounds.top + third * 2f, bounds.right, bounds.top + third * 2f, paints.line)
-    canvas.drawLine(bounds.left, bounds.top, bounds.left + third, bounds.top + third, paints.accent)
-    canvas.drawLine(bounds.right, bounds.top, bounds.left + third * 2f, bounds.top + third, paints.accent)
-    canvas.drawLine(bounds.right, bounds.bottom, bounds.left + third * 2f, bounds.top + third * 2f, paints.accent)
-    canvas.drawLine(bounds.left, bounds.bottom, bounds.left + third, bounds.top + third * 2f, paints.accent)
+    canvas.drawLine(bounds.left + third, bounds.top, bounds.left + third, bounds.bottom, paints.grid)
+    canvas.drawLine(bounds.left + third * 2f, bounds.top, bounds.left + third * 2f, bounds.bottom, paints.grid)
+    canvas.drawLine(bounds.left, bounds.top + third, bounds.right, bounds.top + third, paints.grid)
+    canvas.drawLine(bounds.left, bounds.top + third * 2f, bounds.right, bounds.top + third * 2f, paints.grid)
+    canvas.drawLine(bounds.left, bounds.top, bounds.left + third, bounds.top + third, paints.grid)
+    canvas.drawLine(bounds.right, bounds.top, bounds.left + third * 2f, bounds.top + third, paints.grid)
+    canvas.drawLine(bounds.right, bounds.bottom, bounds.left + third * 2f, bounds.top + third * 2f, paints.grid)
+    canvas.drawLine(bounds.left, bounds.bottom, bounds.left + third, bounds.top + third * 2f, paints.grid)
     setPaintAlpha(paints.line, 1f)
-    setPaintAlpha(paints.accent, 1f)
+    setPaintAlpha(paints.grid, 1f)
 
     val boxes = arrayOf(
         floatArrayOf(0.00f, 0.00f, 0.33f, 0.27f), floatArrayOf(0.33f, 0.00f, 0.67f, 0.33f),
@@ -2260,6 +2267,19 @@ private fun mixColors(startColor: Int, endColor: Int, amount: Float): Int {
     )
 }
 
+private fun gridLineColor(backgroundColor: Int): Int {
+    val luminance = (
+        Color.red(backgroundColor) * 0.299f +
+            Color.green(backgroundColor) * 0.587f +
+            Color.blue(backgroundColor) * 0.114f
+        ) / 255f
+    return if (luminance < 0.45f) {
+        Color.rgb(226, 232, 240)
+    } else {
+        Color.rgb(43, 35, 28)
+    }
+}
+
 private fun ellipsize(text: String, paint: Paint, maxWidth: Float): String {
     if (paint.measureText(text) <= maxWidth) return text
     val suffix = "..."
@@ -2278,6 +2298,7 @@ private fun centeredTextOffset(paint: Paint): Float {
 private data class ChartPaints(
     val fill: Paint,
     val line: Paint,
+    val grid: Paint,
     val accent: Paint,
     val signText: Paint,
     val planetText: Paint,
@@ -2300,11 +2321,8 @@ private data class IsoHouse(
     val sourcePoints: List<Offset>,
     val basePoints: List<Offset>,
     val topPoints: List<Offset>,
-    val cornerBasePoints: List<Offset>,
-    val cornerTopPoints: List<Offset>,
     val wallEdgeVisible: List<Boolean>,
     val drawTopOutline: Boolean,
-    val drawBaseOutline: Boolean,
     val depth: Float,
     val selectedProgress: Float,
     val extraZ: Float,

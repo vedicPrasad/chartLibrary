@@ -65,8 +65,8 @@ private fun ChartDemoScreen() {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         ChartSection("North Indian", ChartStyle.NORTH, ChartTheme.light(), houses)
-//        ChartSection("South Indian", ChartStyle.SOUTH, ChartTheme.temple(), houses)
-//        ChartSection("East Indian", ChartStyle.EAST, ChartTheme.temple(), houses)
+        ChartSection("South Indian", ChartStyle.SOUTH, ChartTheme.temple(), houses)
+        ChartSection("East Indian", ChartStyle.EAST, ChartTheme.temple(), houses)
     }
 }
 

@@ -3,6 +3,7 @@ package com.vedicrishiastro.vedicchart;
 import android.content.Context;
 import android.content.res.TypedArray;
 import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RectF;
@@ -18,7 +19,7 @@ import java.util.List;
 public class VedicChartView extends View {
     private final Paint fillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint linePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Paint accentPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint gridPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint signTextPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint planetTextPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF chartBounds = new RectF();
@@ -132,9 +133,9 @@ public class VedicChartView extends View {
         linePaint.setStrokeWidth(dpFloat(chartTheme.getBorderWidth()));
         linePaint.setColor(chartTheme.getBorderColor());
 
-        accentPaint.setStyle(Paint.Style.STROKE);
-        accentPaint.setStrokeWidth(dpFloat(chartTheme.getBorderWidth() * 1.4f));
-        accentPaint.setColor(chartTheme.getAccentColor());
+        gridPaint.setStyle(Paint.Style.STROKE);
+        gridPaint.setStrokeWidth(dpFloat(chartTheme.getBorderWidth()));
+        gridPaint.setColor(gridLineColor(chartTheme.getBackgroundColor()));
 
         signTextPaint.setTextAlign(Paint.Align.CENTER);
         signTextPaint.setColor(chartTheme.getSignTextColor());
@@ -159,8 +160,8 @@ public class VedicChartView extends View {
         float midLeft = left;
 
         canvas.drawRect(bounds, linePaint);
-        canvas.drawLine(left, top, right, bottom, linePaint);
-        canvas.drawLine(right, top, left, bottom, linePaint);
+        canvas.drawLine(left, top, right, bottom, gridPaint);
+        canvas.drawLine(right, top, left, bottom, gridPaint);
 
         Path diamond = new Path();
         diamond.moveTo(centerX, midTop);
@@ -168,7 +169,7 @@ public class VedicChartView extends View {
         diamond.lineTo(centerX, midBottom);
         diamond.lineTo(midLeft, centerY);
         diamond.close();
-        canvas.drawPath(diamond, accentPaint);
+        canvas.drawPath(diamond, gridPaint);
 
         float[][] boxes = {
                 {0.38f, 0.05f, 0.62f, 0.24f}, {0.58f, 0.13f, 0.86f, 0.36f},
@@ -185,8 +186,8 @@ public class VedicChartView extends View {
         float cell = bounds.width() / 4f;
         canvas.drawRect(bounds, linePaint);
         for (int index = 1; index < 4; index++) {
-            canvas.drawLine(bounds.left + index * cell, bounds.top, bounds.left + index * cell, bounds.bottom, linePaint);
-            canvas.drawLine(bounds.left, bounds.top + index * cell, bounds.right, bounds.top + index * cell, linePaint);
+            canvas.drawLine(bounds.left + index * cell, bounds.top, bounds.left + index * cell, bounds.bottom, gridPaint);
+            canvas.drawLine(bounds.left, bounds.top + index * cell, bounds.right, bounds.top + index * cell, gridPaint);
         }
 
         fillCenter(canvas, bounds, cell);
@@ -204,15 +205,15 @@ public class VedicChartView extends View {
     private void drawEastChart(Canvas canvas, RectF bounds) {
         float third = bounds.width() / 3f;
         canvas.drawRect(bounds, linePaint);
-        canvas.drawLine(bounds.left + third, bounds.top, bounds.left + third, bounds.bottom, linePaint);
-        canvas.drawLine(bounds.left + third * 2f, bounds.top, bounds.left + third * 2f, bounds.bottom, linePaint);
-        canvas.drawLine(bounds.left, bounds.top + third, bounds.right, bounds.top + third, linePaint);
-        canvas.drawLine(bounds.left, bounds.top + third * 2f, bounds.right, bounds.top + third * 2f, linePaint);
+        canvas.drawLine(bounds.left + third, bounds.top, bounds.left + third, bounds.bottom, gridPaint);
+        canvas.drawLine(bounds.left + third * 2f, bounds.top, bounds.left + third * 2f, bounds.bottom, gridPaint);
+        canvas.drawLine(bounds.left, bounds.top + third, bounds.right, bounds.top + third, gridPaint);
+        canvas.drawLine(bounds.left, bounds.top + third * 2f, bounds.right, bounds.top + third * 2f, gridPaint);
 
-        canvas.drawLine(bounds.left, bounds.top, bounds.left + third, bounds.top + third, accentPaint);
-        canvas.drawLine(bounds.right, bounds.top, bounds.left + third * 2f, bounds.top + third, accentPaint);
-        canvas.drawLine(bounds.right, bounds.bottom, bounds.left + third * 2f, bounds.top + third * 2f, accentPaint);
-        canvas.drawLine(bounds.left, bounds.bottom, bounds.left + third, bounds.top + third * 2f, accentPaint);
+        canvas.drawLine(bounds.left, bounds.top, bounds.left + third, bounds.top + third, gridPaint);
+        canvas.drawLine(bounds.right, bounds.top, bounds.left + third * 2f, bounds.top + third, gridPaint);
+        canvas.drawLine(bounds.right, bounds.bottom, bounds.left + third * 2f, bounds.top + third * 2f, gridPaint);
+        canvas.drawLine(bounds.left, bounds.bottom, bounds.left + third, bounds.top + third * 2f, gridPaint);
 
         float[][] boxes = {
                 {0.00f, 0.00f, 0.33f, 0.27f}, {0.33f, 0.00f, 0.67f, 0.33f},
@@ -233,7 +234,7 @@ public class VedicChartView extends View {
                 bounds.top + cell * 3f
         );
         canvas.drawRect(center, fillPaint);
-        canvas.drawRect(center, linePaint);
+        canvas.drawRect(center, gridPaint);
     }
 
     private void drawHouseTexts(Canvas canvas, RectF bounds, float[][] boxes) {
@@ -390,6 +391,17 @@ public class VedicChartView extends View {
 
     private float sp(float value) {
         return TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, value, getResources().getDisplayMetrics());
+    }
+
+    private int gridLineColor(int backgroundColor) {
+        float luminance = (
+                Color.red(backgroundColor) * 0.299f
+                        + Color.green(backgroundColor) * 0.587f
+                        + Color.blue(backgroundColor) * 0.114f
+        ) / 255f;
+        return luminance < 0.45f
+                ? Color.rgb(226, 232, 240)
+                : Color.rgb(43, 35, 28);
     }
 
     private static final class TextLine {
