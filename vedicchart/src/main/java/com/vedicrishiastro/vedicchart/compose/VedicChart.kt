@@ -1067,8 +1067,24 @@ private fun hitTestIsoHouse(
                 .thenByDescending { it.depth },
         )
     return houses.firstOrNull { house ->
-        pointInPolygon(offset, house.topPoints)
+        pointInIsoHouse(offset, house)
     }?.houseIndex
+}
+
+private fun pointInIsoHouse(point: Offset, house: IsoHouse): Boolean {
+    if (pointInPolygon(point, house.topPoints)) return true
+    for (index in house.basePoints.indices) {
+        if (house.wallEdgeVisible.getOrNull(index) == false) continue
+        val next = (index + 1) % house.basePoints.size
+        val wallPoints = listOf(
+            house.topPoints[index],
+            house.topPoints[next],
+            house.basePoints[next],
+            house.basePoints[index],
+        )
+        if (pointInPolygon(point, wallPoints)) return true
+    }
+    return false
 }
 
 private fun hitTestIsoPlanet(
