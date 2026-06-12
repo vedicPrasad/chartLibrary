@@ -1,0 +1,6 @@
+int attr vedicChartStyle 0x0
+int id east 0x0
+int id north 0x0
+int id south 0x0
+int[] styleable VedicChartView { 0x0 }
+int styleable VedicChartView_vedicChartStyle 0

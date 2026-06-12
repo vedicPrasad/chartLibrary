@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <declare-styleable name="VedicChartView">
+        <attr format="enum" name="vedicChartStyle">
+            <enum name="north" value="0"/>
+            <enum name="south" value="1"/>
+            <enum name="east" value="2"/>
+        </attr>
+    </declare-styleable>
+</resources>

@@ -1,0 +1,7 @@
+R_DEF: Internal format may change without notice
+local
+attr? vedicChartStyle
+id east
+id north
+id south
+styleable VedicChartView vedicChartStyle

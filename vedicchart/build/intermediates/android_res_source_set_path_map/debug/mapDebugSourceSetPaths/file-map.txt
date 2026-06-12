@@ -1,0 +1,9 @@
+com.vedicrishiastro.vedicchart-pngs-0 /Users/prasadvetkar/AndroidStudioProjects/ChartLibrary/vedicchart/build/generated/res/pngs/debug
+com.vedicrishiastro.vedicchart-updated_navigation_xml-1 /Users/prasadvetkar/AndroidStudioProjects/ChartLibrary/vedicchart/build/generated/updated_navigation_xml/debug
+com.vedicrishiastro.vedicchart-mergeDebugResources-2 /Users/prasadvetkar/AndroidStudioProjects/ChartLibrary/vedicchart/build/intermediates/incremental/debug/mergeDebugResources/merged.dir
+com.vedicrishiastro.vedicchart-mergeDebugResources-3 /Users/prasadvetkar/AndroidStudioProjects/ChartLibrary/vedicchart/build/intermediates/incremental/debug/mergeDebugResources/stripped.dir
+com.vedicrishiastro.vedicchart-debug-4 /Users/prasadvetkar/AndroidStudioProjects/ChartLibrary/vedicchart/build/intermediates/merged_res/debug/mergeDebugResources
+com.vedicrishiastro.vedicchart-debug-5 /Users/prasadvetkar/AndroidStudioProjects/ChartLibrary/vedicchart/build/intermediates/packaged_res/debug/packageDebugResources
+com.vedicrishiastro.vedicchart-debug-6 /Users/prasadvetkar/AndroidStudioProjects/ChartLibrary/vedicchart/src/debug/res
+com.vedicrishiastro.vedicchart-main-7 /Users/prasadvetkar/AndroidStudioProjects/ChartLibrary/vedicchart/src/main/res
+gradleHome-0 /Users/prasadvetkar/.gradle

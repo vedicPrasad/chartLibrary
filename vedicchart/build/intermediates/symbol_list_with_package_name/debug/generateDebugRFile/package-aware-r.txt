@@ -1,0 +1,6 @@
+com.vedicrishiastro.vedicchart
+attr vedicChartStyle
+id east
+id north
+id south
+styleable VedicChartView vedicChartStyle
