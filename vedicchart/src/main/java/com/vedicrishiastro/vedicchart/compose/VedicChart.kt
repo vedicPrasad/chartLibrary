@@ -334,6 +334,7 @@ private fun drawIsometricVedicChart(
         drawIsoHousePrism(canvas, house, paints, lineReveal)
     }
     if (chartStyle == ChartStyle.EAST) {
+        drawEastGridOverlay(canvas, bounds, projection, z = 0.5f, reveal = lineReveal, paints = paints)
         drawEastGridOverlay(canvas, bounds, projection, z = projection.blockHeight + 0.5f, reveal = lineReveal, paints = paints)
     }
     if (textProgress > 0f) {
@@ -427,16 +428,11 @@ private fun buildIsoHouses(
             sourcePoints = points,
             basePoints = basePoints,
             topPoints = topPoints,
-            outerVerticalEdges = cornerPoints
-                .filter { isOuterChartPoint(it, bounds) }
-                .map { sourcePoint ->
-                    IsoVerticalEdge(
-                        base = projection.project(sourcePoint, z = extraZ),
-                        top = projection.project(sourcePoint, z = height + extraZ),
-                    )
-                },
+            cornerBasePoints = cornerPoints.map { projection.project(it, z = extraZ) },
+            cornerTopPoints = cornerPoints.map { projection.project(it, z = height + extraZ) },
             wallEdgeVisible = if (connectedEastBlock) eastOuterEdgeVisibility(points, bounds) else List(points.size) { true },
             drawTopOutline = !connectedEastBlock,
+            drawBaseOutline = !connectedEastBlock,
             depth = basePoints.map { it.y }.average().toFloat(),
             selectedProgress = selectedLift,
             extraZ = extraZ,
@@ -500,11 +496,16 @@ private fun drawIsoHousePrism(
         canvas.drawPath(wallPath, wallPaint)
     }
     canvas.drawPath(topPath, topPaint)
+    if (house.drawBaseOutline) {
+        canvas.drawPath(basePath, wirePaint)
+    }
     if (house.drawTopOutline) {
         canvas.drawPath(topPath, wirePaint)
     }
-    house.outerVerticalEdges.forEach { edge ->
-        canvas.drawLine(edge.base.x, edge.base.y, edge.top.x, edge.top.y, wirePaint)
+    house.cornerBasePoints.indices.forEach { index ->
+        val base = house.cornerBasePoints[index]
+        val top = house.cornerTopPoints.getOrNull(index) ?: return@forEach
+        canvas.drawLine(base.x, base.y, top.x, top.y, wirePaint)
     }
 }
 
@@ -2321,8 +2322,11 @@ private data class IsoHouse(
     val sourcePoints: List<Offset>,
     val basePoints: List<Offset>,
     val topPoints: List<Offset>,
+    val cornerBasePoints: List<Offset>,
+    val cornerTopPoints: List<Offset>,
     val wallEdgeVisible: List<Boolean>,
     val drawTopOutline: Boolean,
+    val drawBaseOutline: Boolean,
     val depth: Float,
     val selectedProgress: Float,
     val extraZ: Float,
