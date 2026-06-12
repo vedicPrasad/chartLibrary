@@ -119,7 +119,7 @@ private fun ChartSection(
             },
             confirmButton = {
                 Button(onClick = { selectedPlanet = null }) {
-                    Text(text = "Done")
+                    Text(text = "Done d")
                 }
             },
         )
