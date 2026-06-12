@@ -325,7 +325,8 @@ private fun drawIsometricVedicChart(
         drawIsoHousePrism(canvas, house, paints, lineReveal)
     }
     if (chartStyle == ChartStyle.EAST) {
-        drawEastTopGridOverlay(canvas, bounds, projection, lineReveal, paints)
+        drawEastGridOverlay(canvas, bounds, projection, z = 0.5f, reveal = lineReveal, paints = paints)
+        drawEastGridOverlay(canvas, bounds, projection, z = projection.blockHeight + 0.5f, reveal = lineReveal, paints = paints)
     }
     if (textProgress > 0f) {
         drawIsoHouseTexts(
@@ -502,10 +503,11 @@ private fun drawIsoHousePrism(
     }
 }
 
-private fun drawEastTopGridOverlay(
+private fun drawEastGridOverlay(
     canvas: android.graphics.Canvas,
     bounds: RectF,
     projection: IsoProjection,
+    z: Float,
     reveal: Float,
     paints: ChartPaints,
 ) {
@@ -516,7 +518,6 @@ private fun drawEastTopGridOverlay(
     val x2 = bounds.left + third * 2f
     val y1 = bounds.top + third
     val y2 = bounds.top + third * 2f
-    val z = projection.blockHeight + 0.5f
     val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeWidth = paints.line.strokeWidth
