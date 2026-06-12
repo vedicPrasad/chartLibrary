@@ -1,6 +1,7 @@
 package com.vedicrishiastro.vedicchart.compose
 
 import android.graphics.Color
+import android.graphics.DashPathEffect
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
@@ -10,6 +11,8 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -22,7 +25,6 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.sp
 import com.vedicrishiastro.vedicchart.ChartStyle
@@ -31,8 +33,11 @@ import com.vedicrishiastro.vedicchart.ZodiacHouse
 import java.util.ArrayDeque
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlin.math.PI
+import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sin
 
 private val SmoothLineEasing = CubicBezierEasing(0.16f, 1f, 0.3f, 1f)
 private val SmoothRevealEasing = CubicBezierEasing(0.2f, 0.92f, 0.18f, 1f)
@@ -60,6 +65,8 @@ fun VedicChart(
 ) {
     val density = LocalDensity.current.density
     var internalSelectedHouseIndex by remember { mutableStateOf<Int?>(null) }
+    var rotationYawDegrees by remember { mutableStateOf(0f) }
+    var rotationPitchDegrees by remember { mutableStateOf(0f) }
     val activeSelectedHouseIndex = selectedHouseIndex ?: internalSelectedHouseIndex
     var incomingSelectedHouseIndex by remember { mutableStateOf<Int?>(activeSelectedHouseIndex) }
     var outgoingSelectedHouseIndex by remember { mutableStateOf<Int?>(null) }
@@ -145,11 +152,23 @@ fun VedicChart(
         incomingSelectedHouseIndex?.let { SelectedHouseLift(it, incomingLiftProgress.value) },
     ).filter { it.progress > 0f }
     Canvas(
-        modifier = modifier.pointerInput(houses, chartStyle, chartTheme, density, usePlanetIcons, selectedHouseLifts) {
+        modifier = modifier
+            .pointerInput(Unit) {
+                detectDragGestures { _, dragAmount ->
+                    rotationYawDegrees = normalizeDegrees(rotationYawDegrees + dragAmount.x * 0.42f)
+                    rotationPitchDegrees = normalizeDegrees(rotationPitchDegrees - dragAmount.y * 0.42f)
+                }
+            }
+            .pointerInput(houses, chartStyle, chartTheme, density, usePlanetIcons, selectedHouseLifts, rotationYawDegrees, rotationPitchDegrees) {
             detectTapGestures { offset ->
                 val bounds = chartBounds(size.width.toFloat(), size.height.toFloat(), density)
+                val correctedOffset = rotatePoint(
+                    point = offset,
+                    pivot = Offset(bounds.centerX(), bounds.centerY()),
+                    degrees = -rotationYawDegrees,
+                )
                 val planetSelection = hitTestPlanet(
-                    offset = offset,
+                    offset = correctedOffset,
                     bounds = bounds,
                     houses = houses,
                     chartStyle = chartStyle,
@@ -164,7 +183,7 @@ fun VedicChart(
                         return@detectTapGestures
                     }
                 }
-                val houseIndex = hitTestHouse(offset, bounds, chartStyle)
+                val houseIndex = hitTestHouse(correctedOffset, bounds, chartStyle)
                 if (houseIndex != null && houseIndex in houses.indices) {
                     if (selectedHouseIndex == null) {
                         internalSelectedHouseIndex = if (internalSelectedHouseIndex == houseIndex) {
@@ -185,6 +204,8 @@ fun VedicChart(
             lineReveal = progress,
             textProgress = textProgress,
             selectedHouseLifts = selectedHouseLifts,
+            rotationYawDegrees = rotationYawDegrees,
+            rotationPitchDegrees = rotationPitchDegrees,
             usePlanetIcons = usePlanetIcons,
         )
     }
@@ -197,27 +218,29 @@ private fun DrawScope.drawVedicChart(
     lineReveal: Float,
     textProgress: Float,
     selectedHouseLifts: List<SelectedHouseLift>,
+    rotationYawDegrees: Float,
+    rotationPitchDegrees: Float,
     usePlanetIcons: Boolean,
 ) {
     val bounds = chartBounds(size.width, size.height, density)
     val paints = ChartPaints(chartTheme)
-    val outerCornerRadius = outerCornerRadius(density)
 
     drawIntoCanvas { canvas ->
         val nativeCanvas = canvas.nativeCanvas
-        val clipPath = Path().apply {
-            addRoundRect(bounds, outerCornerRadius, outerCornerRadius, Path.Direction.CW)
-        }
-        val saveCount = nativeCanvas.save()
-        nativeCanvas.clipPath(clipPath)
-        nativeCanvas.drawRoundRect(bounds, outerCornerRadius, outerCornerRadius, paints.fill)
-        when (chartStyle) {
-            ChartStyle.SOUTH -> drawSouthChart(nativeCanvas, bounds, houses, paints, chartTheme, lineReveal, textProgress, emptyList(), outerCornerRadius, usePlanetIcons)
-            ChartStyle.EAST -> drawEastChart(nativeCanvas, bounds, houses, paints, chartTheme, lineReveal, textProgress, emptyList(), outerCornerRadius, usePlanetIcons)
-            else -> drawNorthChart(nativeCanvas, bounds, houses, paints, chartTheme, lineReveal, textProgress, emptyList(), outerCornerRadius, usePlanetIcons)
-        }
-        nativeCanvas.restoreToCount(saveCount)
-        drawSelectedHouseOverlay(nativeCanvas, bounds, houses, paints, chartTheme, textProgress, selectedHouseLifts, chartStyle, usePlanetIcons)
+        drawIsometricVedicChart(
+            canvas = nativeCanvas,
+            bounds = bounds,
+            houses = houses,
+            paints = paints,
+            theme = chartTheme,
+            chartStyle = chartStyle,
+            lineReveal = lineReveal,
+            textProgress = textProgress,
+            selectedHouseLifts = selectedHouseLifts,
+            rotationYawDegrees = rotationYawDegrees,
+            rotationPitchDegrees = rotationPitchDegrees,
+            usePlanetIcons = usePlanetIcons,
+        )
     }
 }
 
@@ -257,6 +280,295 @@ private fun DrawScope.ChartPaints(theme: ChartTheme): ChartPaints {
         signBaseTextSize = signTextSize,
         planetBaseTextSize = planetTextSize,
     )
+}
+
+private fun drawIsometricVedicChart(
+    canvas: android.graphics.Canvas,
+    bounds: RectF,
+    houses: List<ZodiacHouse>,
+    paints: ChartPaints,
+    theme: ChartTheme,
+    chartStyle: ChartStyle,
+    lineReveal: Float,
+    textProgress: Float,
+    selectedHouseLifts: List<SelectedHouseLift>,
+    rotationYawDegrees: Float,
+    rotationPitchDegrees: Float,
+    usePlanetIcons: Boolean,
+) {
+    val projection = IsoProjection(bounds, rotationYawDegrees, rotationPitchDegrees)
+    val housesToDraw = buildIsoHouses(chartStyle, bounds, selectedHouseLifts, projection)
+        .sortedBy { it.depth }
+    val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = theme.backgroundColor
+    }
+    canvas.drawRoundRect(bounds, outerCornerRadius(1f), outerCornerRadius(1f), backgroundPaint)
+    housesToDraw.forEach { house ->
+        drawIsoHousePrism(canvas, house, paints, lineReveal)
+    }
+    if (textProgress > 0f) {
+        drawIsoHouseTexts(canvas, bounds, houses, paints, theme, chartStyle, selectedHouseLifts, projection, textProgress, usePlanetIcons)
+    }
+}
+
+private fun buildIsoHouses(
+    chartStyle: ChartStyle,
+    bounds: RectF,
+    selectedHouseLifts: List<SelectedHouseLift>,
+    projection: IsoProjection,
+): List<IsoHouse> {
+    return (0 until 12).mapNotNull { houseIndex ->
+        val path = selectedHousePath(chartStyle, houseIndex, bounds) ?: return@mapNotNull null
+        val points = samplePath(path, 64).ifEmpty { return@mapNotNull null }
+        val selectedLift = liftProgressFor(houseIndex, selectedHouseLifts)
+        val height = projection.blockHeight
+        val basePoints = points.map { projection.project(it, z = 0f) }
+        val topPoints = points.map { projection.project(it, z = height) }
+        IsoHouse(
+            houseIndex = houseIndex,
+            sourcePoints = points,
+            basePoints = basePoints,
+            topPoints = topPoints,
+            depth = basePoints.map { it.y }.average().toFloat(),
+            selectedProgress = selectedLift,
+        )
+    }
+}
+
+private fun drawIsoHousePrism(
+    canvas: android.graphics.Canvas,
+    house: IsoHouse,
+    paints: ChartPaints,
+    reveal: Float,
+) {
+    val alpha = smoothStep(reveal)
+    if (alpha <= 0f) return
+    val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = Color.argb((18 * alpha).toInt(), 0, 0, 0)
+    }
+    val topPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = withAlpha(
+            if (house.selectedProgress > 0f) Color.rgb(255, 236, 196) else Color.rgb(235, 245, 255),
+            (255 * alpha).toInt(),
+        )
+    }
+    val wirePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 1.35f
+        color = Color.argb((230 * alpha).toInt(), 0, 0, 0)
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+        pathEffect = DashPathEffect(floatArrayOf(14f, 14f), 0f)
+    }
+    val basePath = pointsToPath(house.basePoints)
+    val topPath = pointsToPath(house.topPoints)
+    val shadowPath = Path(basePath).apply {
+        transform(Matrix().apply { setTranslate(0f, 18f) })
+    }
+    canvas.drawPath(shadowPath, shadowPaint)
+
+    for (index in house.basePoints.indices) {
+        val next = (index + 1) % house.basePoints.size
+        val topA = house.topPoints[index]
+        val topB = house.topPoints[next]
+        val baseB = house.basePoints[next]
+        val baseA = house.basePoints[index]
+        val wallPath = Path().apply {
+            moveTo(topA.x, topA.y)
+            lineTo(topB.x, topB.y)
+            lineTo(baseB.x, baseB.y)
+            lineTo(baseA.x, baseA.y)
+            close()
+        }
+        val centerX = (topA.x + topB.x + baseA.x + baseB.x) / 4f
+        val warmSide = centerX >= topPathBoundsCenterX(house.topPoints)
+        val wallPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            color = withAlpha(
+                if (warmSide) Color.rgb(245, 137, 38) else Color.rgb(33, 128, 238),
+                (245 * alpha).toInt(),
+            )
+        }
+        canvas.drawPath(wallPath, wallPaint)
+        canvas.drawPath(wallPath, wirePaint)
+    }
+    canvas.drawPath(topPath, topPaint)
+    canvas.drawPath(basePath, wirePaint)
+    canvas.drawPath(topPath, wirePaint)
+    for (index in house.basePoints.indices step 6) {
+        val base = house.basePoints[index]
+        val top = house.topPoints[index]
+        canvas.drawLine(base.x, base.y, top.x, top.y, wirePaint)
+    }
+}
+
+private fun drawIsoHouseTexts(
+    canvas: android.graphics.Canvas,
+    bounds: RectF,
+    houses: List<ZodiacHouse>,
+    paints: ChartPaints,
+    theme: ChartTheme,
+    chartStyle: ChartStyle,
+    selectedHouseLifts: List<SelectedHouseLift>,
+    projection: IsoProjection,
+    textProgress: Float,
+    usePlanetIcons: Boolean,
+) {
+    val count = min(houses.size, 12)
+    for (houseIndex in 0 until count) {
+        val liftProgress = liftProgressFor(houseIndex, selectedHouseLifts)
+        val height = projection.blockHeight
+        val labelBoxes = labelBoxesFor(chartStyle, houseIndex, bounds, paints.planetText.textSize) ?: continue
+        drawIsoSign(canvas, houses[houseIndex], labelBoxes.signBox, paints, theme, projection, height, textProgress)
+        drawIsoPlanets(canvas, houses[houseIndex], labelBoxes.planetBox, paints, maxPlanetRowsFor(chartStyle, houseIndex), projection, height, textProgress, usePlanetIcons)
+    }
+}
+
+private fun drawIsoSign(
+    canvas: android.graphics.Canvas,
+    house: ZodiacHouse,
+    box: RectF,
+    paints: ChartPaints,
+    theme: ChartTheme,
+    projection: IsoProjection,
+    height: Float,
+    textProgress: Float,
+) {
+    val signText = if (theme.shouldShowSignNames()) "${house.signName} (${house.sign})" else house.sign.toString()
+    val text = fitSingleLine(signText, paints.signText, paints.signBaseTextSize * 0.86f, box.width(), minTextSize = 7f)
+    if (text.isBlank()) return
+    val point = projection.project(Offset(box.centerX(), box.centerY()), z = height + 8f)
+    setPaintAlpha(paints.signText, textProgress)
+    canvas.drawText(text, point.x, point.y + centeredTextOffset(paints.signText), paints.signText)
+    setPaintAlpha(paints.signText, 1f)
+}
+
+private fun drawIsoPlanets(
+    canvas: android.graphics.Canvas,
+    house: ZodiacHouse,
+    box: RectF,
+    paints: ChartPaints,
+    maxRows: Int,
+    projection: IsoProjection,
+    height: Float,
+    textProgress: Float,
+    usePlanetIcons: Boolean,
+) {
+    val tokens = planetLabels(house, usePlanetIcons)
+    if (tokens.isEmpty()) return
+    val layout = buildPlanetGrid(tokens, box, paints.planetText, paints.planetBaseTextSize * 0.82f, maxRows)
+    if (layout.tokens.isEmpty()) return
+    val pillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = withAlpha(mixColors(paints.planetText.color, paints.fill.color, 0.84f), (92 * textProgress).toInt())
+    }
+    setPaintAlpha(paints.planetText, textProgress)
+    layout.tokens.forEachIndexed { index, token ->
+        val row = index / layout.columns
+        val column = index % layout.columns
+        val flatX = box.left + layout.cellWidth * column + layout.cellWidth / 2f
+        val flatY = box.top + layout.cellHeight * row + layout.cellHeight / 2f
+        val point = projection.project(Offset(flatX, flatY), z = height + 10f)
+        val textWidth = paints.planetText.measureText(token)
+        val pill = RectF(
+            point.x - textWidth / 2f - 7f,
+            point.y - paints.planetText.textSize * 0.62f,
+            point.x + textWidth / 2f + 7f,
+            point.y + paints.planetText.textSize * 0.52f,
+        )
+        canvas.drawRoundRect(pill, pill.height() * 0.48f, pill.height() * 0.48f, pillPaint)
+        canvas.drawText(token, point.x, point.y + centeredTextOffset(paints.planetText), paints.planetText)
+    }
+    setPaintAlpha(paints.planetText, 1f)
+}
+
+private fun labelBoxesFor(
+    chartStyle: ChartStyle,
+    houseIndex: Int,
+    bounds: RectF,
+    planetTextSize: Float,
+): LabelBoxes? {
+    return when (chartStyle) {
+        ChartStyle.NORTH -> northSlots().getOrNull(houseIndex)?.let { slot ->
+            val signBox = slot.signBox.toRect(bounds)
+            LabelBoxes(
+                signBox = signBox,
+                planetBox = planetBoxAvoidingSign(
+                    planetBox = slot.planetBox.toRect(bounds).withInset(bounds.width() * 0.012f),
+                    signBox = signBox,
+                    gap = planetSignGap(bounds),
+                ),
+            )
+        }
+        ChartStyle.SOUTH,
+        ChartStyle.EAST -> houseHitBoxes(chartStyle).getOrNull(houseIndex)?.toRect(bounds)?.let { box ->
+            val inset = 3f
+            val signHeight = min(box.height() * 0.34f, planetTextSize * 1.7f)
+            val signBox = RectF(box.left + inset, box.top + inset, box.right - inset, box.top + inset + signHeight)
+            LabelBoxes(
+                signBox = signBox,
+                planetBox = planetBoxAvoidingSign(
+                    planetBox = RectF(box.left + inset, signBox.bottom + planetSignGap(box), box.right - inset, box.bottom - inset),
+                    signBox = signBox,
+                    gap = planetSignGap(box),
+                ),
+            )
+        }
+    }
+}
+
+private fun pointsToPath(points: List<Offset>): Path {
+    return Path().apply {
+        if (points.isEmpty()) return@apply
+        moveTo(points.first().x, points.first().y)
+        for (index in 1 until points.size) {
+            lineTo(points[index].x, points[index].y)
+        }
+        close()
+    }
+}
+
+private fun topPathBoundsCenterX(points: List<Offset>): Float {
+    if (points.isEmpty()) return 0f
+    val minX = points.minOf { it.x }
+    val maxX = points.maxOf { it.x }
+    return (minX + maxX) / 2f
+}
+
+private class IsoProjection(
+    private val bounds: RectF,
+    yawDegrees: Float,
+    pitchDegrees: Float,
+) {
+    val blockHeight: Float = bounds.width() * 0.11f
+    private val yaw = yawDegrees * PI.toFloat() / 180f
+    private val pitch = pitchDegrees * PI.toFloat() / 180f
+    private val cosYaw = cos(yaw)
+    private val sinYaw = sin(yaw)
+    private val cosPitch = cos(pitch)
+    private val sinPitch = sin(pitch)
+    private val cameraDistance = bounds.width() * 3.2f
+    private val perspectiveStrength = 0.16f
+
+    fun project(point: Offset, z: Float): Offset {
+        val x0 = point.x - bounds.centerX()
+        val y0 = point.y - bounds.centerY()
+        val z0 = z
+
+        val y1 = y0 * cosPitch - z0 * sinPitch
+        val z1 = y0 * sinPitch + z0 * cosPitch
+        val x2 = x0 * cosYaw + z1 * sinYaw
+        val z2 = -x0 * sinYaw + z1 * cosYaw
+        val perspective = cameraDistance / (cameraDistance - z2 * perspectiveStrength)
+
+        return Offset(
+            x = bounds.centerX() + x2 * perspective,
+            y = bounds.centerY() + y1 * perspective,
+        )
+    }
 }
 
 private fun drawNorthChart(
@@ -887,6 +1199,24 @@ private fun transformedRect(rect: RectF, transform: TextLiftTransform?): RectF {
     val result = RectF(rect)
     matrix.mapRect(result)
     return result
+}
+
+private fun rotatePoint(point: Offset, pivot: Offset, degrees: Float): Offset {
+    if (degrees == 0f) return point
+    val radians = degrees * PI.toFloat() / 180f
+    val cosValue = kotlin.math.cos(radians)
+    val sinValue = kotlin.math.sin(radians)
+    val dx = point.x - pivot.x
+    val dy = point.y - pivot.y
+    return Offset(
+        x = pivot.x + dx * cosValue - dy * sinValue,
+        y = pivot.y + dx * sinValue + dy * cosValue,
+    )
+}
+
+private fun normalizeDegrees(value: Float): Float {
+    val normalized = value % 360f
+    return if (normalized < 0f) normalized + 360f else normalized
 }
 
 private fun drawSelectedHouseHighlight(
@@ -1587,6 +1917,20 @@ private data class RevealedPath(
 private data class SelectedHouseLift(
     val houseIndex: Int,
     val progress: Float,
+)
+
+private data class IsoHouse(
+    val houseIndex: Int,
+    val sourcePoints: List<Offset>,
+    val basePoints: List<Offset>,
+    val topPoints: List<Offset>,
+    val depth: Float,
+    val selectedProgress: Float,
+)
+
+private data class LabelBoxes(
+    val signBox: RectF,
+    val planetBox: RectF,
 )
 
 private data class TextLiftTransform(
