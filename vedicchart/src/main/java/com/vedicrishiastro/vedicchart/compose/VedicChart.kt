@@ -319,9 +319,6 @@ private fun drawIsometricVedicChart(
     restingHouses.forEach { house ->
         drawIsoHousePrism(canvas, house, paints, lineReveal)
     }
-    liftedHouses.forEach { house ->
-        drawIsoHousePrism(canvas, house, paints, lineReveal)
-    }
     if (textProgress > 0f) {
         drawIsoHouseTexts(
             canvas = canvas,
@@ -336,6 +333,11 @@ private fun drawIsometricVedicChart(
             usePlanetIcons = usePlanetIcons,
             houseFilter = { houseIndex -> liftProgressFor(houseIndex, selectedHouseLifts) <= 0f },
         )
+    }
+    liftedHouses.forEach { house ->
+        drawIsoHousePrism(canvas, house, paints, lineReveal)
+    }
+    if (textProgress > 0f) {
         drawIsoHouseTexts(
             canvas = canvas,
             bounds = bounds,
