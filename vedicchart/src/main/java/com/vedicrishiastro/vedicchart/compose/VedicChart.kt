@@ -47,7 +47,6 @@ private const val MaxPitchDegrees = 85f
 private val IsoSurfaceColor: Int = Color.rgb(235, 245, 255)
 private val IsoSelectedSurfaceColor: Int = Color.rgb(255, 236, 196)
 private const val EastBlockGapRatio = 0f
-private const val EastBlockHeightMultiplier = 1.35f
 
 data class VedicPlanetSelection(
     val houseIndex: Int,
@@ -380,7 +379,7 @@ private fun drawEastCenterTile(
         bounds.top + third * 2f,
     )
     val flatPoints = insetPolygon(centerRect.corners(), bounds.width() * EastBlockGapRatio)
-    val topPoints = flatPoints.map { projection.project(it, z = projection.blockHeight * EastBlockHeightMultiplier) }
+    val topPoints = flatPoints.map { projection.project(it, z = projection.blockHeight) }
     val topPath = pointsToPath(topPoints)
     val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
@@ -408,7 +407,7 @@ private fun buildIsoHouses(
             }
         }.ifEmpty { return@mapNotNull null }
         val selectedLift = liftProgressFor(houseIndex, selectedHouseLifts)
-        val height = projection.blockHeight * if (chartStyle == ChartStyle.EAST) EastBlockHeightMultiplier else 1f
+        val height = projection.blockHeight
         val extraZ = projection.selectedLiftHeight * selectedLift
         val basePoints = points.map { projection.project(it, z = extraZ) }
         val topPoints = points.map { projection.project(it, z = height + extraZ) }
@@ -519,7 +518,7 @@ private fun drawEastTopGridOverlay(
     val x2 = bounds.left + third * 2f
     val y1 = bounds.top + third
     val y2 = bounds.top + third * 2f
-    val z = projection.blockHeight * EastBlockHeightMultiplier + 0.5f
+    val z = projection.blockHeight + 0.5f
     val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeWidth = paints.line.strokeWidth
@@ -565,8 +564,7 @@ private fun drawIsoHouseTexts(
     for (houseIndex in 0 until count) {
         if (!houseFilter(houseIndex)) continue
         val liftProgress = liftProgressFor(houseIndex, selectedHouseLifts)
-        val baseHeight = projection.blockHeight * if (chartStyle == ChartStyle.EAST) EastBlockHeightMultiplier else 1f
-        val height = baseHeight + projection.selectedLiftHeight * liftProgress
+        val height = projection.blockHeight + projection.selectedLiftHeight * liftProgress
         val labelBoxes = labelBoxesFor(chartStyle, houseIndex, bounds, paints.planetText.textSize) ?: continue
         drawIsoSign(canvas, houses[houseIndex], labelBoxes.signBox, paints, theme, projection, height, textProgress)
         drawIsoPlanets(canvas, houses[houseIndex], labelBoxes.planetBox, paints, maxPlanetRowsFor(chartStyle, houseIndex), projection, height, textProgress, usePlanetIcons)
@@ -1384,8 +1382,7 @@ private fun hitTestIsoPlanet(
             baseTextSize = chartTheme.planetTextSizeSp * density,
             maxRows = maxPlanetRowsFor(chartStyle, houseIndex),
         )
-        val baseHeight = projection.blockHeight * if (chartStyle == ChartStyle.EAST) EastBlockHeightMultiplier else 1f
-        val z = baseHeight + projection.selectedLiftHeight * liftProgressFor(houseIndex, selectedHouseLifts) + 10f
+        val z = projection.blockHeight + projection.selectedLiftHeight * liftProgressFor(houseIndex, selectedHouseLifts) + 10f
         layout.tokens.forEachIndexed { planetIndex, token ->
             val row = planetIndex / layout.columns
             val column = planetIndex % layout.columns
