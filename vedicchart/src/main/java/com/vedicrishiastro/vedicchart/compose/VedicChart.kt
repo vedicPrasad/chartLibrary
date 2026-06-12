@@ -162,13 +162,9 @@ fun VedicChart(
             .pointerInput(houses, chartStyle, chartTheme, density, usePlanetIcons, selectedHouseLifts, rotationYawDegrees, rotationPitchDegrees) {
             detectTapGestures { offset ->
                 val bounds = chartBounds(size.width.toFloat(), size.height.toFloat(), density)
-                val correctedOffset = rotatePoint(
-                    point = offset,
-                    pivot = Offset(bounds.centerX(), bounds.centerY()),
-                    degrees = -rotationYawDegrees,
-                )
-                val planetSelection = hitTestPlanet(
-                    offset = correctedOffset,
+                val projection = IsoProjection(bounds, rotationYawDegrees, rotationPitchDegrees)
+                val planetSelection = hitTestIsoPlanet(
+                    offset = offset,
                     bounds = bounds,
                     houses = houses,
                     chartStyle = chartStyle,
@@ -176,6 +172,7 @@ fun VedicChart(
                     density = density,
                     usePlanetIcons = usePlanetIcons,
                     selectedHouseLifts = selectedHouseLifts,
+                    projection = projection,
                 )
                 if (planetSelection != null) {
                     if (onPlanetSelected != null) {
@@ -183,7 +180,13 @@ fun VedicChart(
                         return@detectTapGestures
                     }
                 }
-                val houseIndex = hitTestHouse(correctedOffset, bounds, chartStyle)
+                val houseIndex = hitTestIsoHouse(
+                    offset = offset,
+                    bounds = bounds,
+                    chartStyle = chartStyle,
+                    selectedHouseLifts = selectedHouseLifts,
+                    projection = projection,
+                )
                 if (houseIndex != null && houseIndex in houses.indices) {
                     if (selectedHouseIndex == null) {
                         internalSelectedHouseIndex = if (internalSelectedHouseIndex == houseIndex) {
@@ -298,17 +301,50 @@ private fun drawIsometricVedicChart(
 ) {
     val projection = IsoProjection(bounds, rotationYawDegrees, rotationPitchDegrees)
     val housesToDraw = buildIsoHouses(chartStyle, bounds, selectedHouseLifts, projection)
+    val restingHouses = housesToDraw
+        .filter { it.selectedProgress <= 0f }
+        .sortedBy { it.depth }
+    val liftedHouses = housesToDraw
+        .filter { it.selectedProgress > 0f }
         .sortedBy { it.depth }
     val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
         color = theme.backgroundColor
     }
     canvas.drawRoundRect(bounds, outerCornerRadius(1f), outerCornerRadius(1f), backgroundPaint)
-    housesToDraw.forEach { house ->
+    restingHouses.forEach { house ->
+        drawIsoHousePrism(canvas, house, paints, lineReveal)
+    }
+    liftedHouses.forEach { house ->
         drawIsoHousePrism(canvas, house, paints, lineReveal)
     }
     if (textProgress > 0f) {
-        drawIsoHouseTexts(canvas, bounds, houses, paints, theme, chartStyle, selectedHouseLifts, projection, textProgress, usePlanetIcons)
+        drawIsoHouseTexts(
+            canvas = canvas,
+            bounds = bounds,
+            houses = houses,
+            paints = paints,
+            theme = theme,
+            chartStyle = chartStyle,
+            selectedHouseLifts = selectedHouseLifts,
+            projection = projection,
+            textProgress = textProgress,
+            usePlanetIcons = usePlanetIcons,
+            houseFilter = { houseIndex -> liftProgressFor(houseIndex, selectedHouseLifts) <= 0f },
+        )
+        drawIsoHouseTexts(
+            canvas = canvas,
+            bounds = bounds,
+            houses = houses,
+            paints = paints,
+            theme = theme,
+            chartStyle = chartStyle,
+            selectedHouseLifts = selectedHouseLifts,
+            projection = projection,
+            textProgress = textProgress,
+            usePlanetIcons = usePlanetIcons,
+            houseFilter = { houseIndex -> liftProgressFor(houseIndex, selectedHouseLifts) > 0f },
+        )
     }
 }
 
@@ -323,8 +359,9 @@ private fun buildIsoHouses(
         val points = samplePath(path, 64).ifEmpty { return@mapNotNull null }
         val selectedLift = liftProgressFor(houseIndex, selectedHouseLifts)
         val height = projection.blockHeight
-        val basePoints = points.map { projection.project(it, z = 0f) }
-        val topPoints = points.map { projection.project(it, z = height) }
+        val extraZ = projection.selectedLiftHeight * selectedLift
+        val basePoints = points.map { projection.project(it, z = extraZ) }
+        val topPoints = points.map { projection.project(it, z = height + extraZ) }
         IsoHouse(
             houseIndex = houseIndex,
             sourcePoints = points,
@@ -332,6 +369,7 @@ private fun buildIsoHouses(
             topPoints = topPoints,
             depth = basePoints.map { it.y }.average().toFloat(),
             selectedProgress = selectedLift,
+            extraZ = extraZ,
         )
     }
 }
@@ -416,11 +454,13 @@ private fun drawIsoHouseTexts(
     projection: IsoProjection,
     textProgress: Float,
     usePlanetIcons: Boolean,
+    houseFilter: (Int) -> Boolean = { true },
 ) {
     val count = min(houses.size, 12)
     for (houseIndex in 0 until count) {
+        if (!houseFilter(houseIndex)) continue
         val liftProgress = liftProgressFor(houseIndex, selectedHouseLifts)
-        val height = projection.blockHeight
+        val height = projection.blockHeight + projection.selectedLiftHeight * liftProgress
         val labelBoxes = labelBoxesFor(chartStyle, houseIndex, bounds, paints.planetText.textSize) ?: continue
         drawIsoSign(canvas, houses[houseIndex], labelBoxes.signBox, paints, theme, projection, height, textProgress)
         drawIsoPlanets(canvas, houses[houseIndex], labelBoxes.planetBox, paints, maxPlanetRowsFor(chartStyle, houseIndex), projection, height, textProgress, usePlanetIcons)
@@ -544,6 +584,7 @@ private class IsoProjection(
     pitchDegrees: Float,
 ) {
     val blockHeight: Float = bounds.width() * 0.11f
+    val selectedLiftHeight: Float = bounds.width() * 0.17f
     private val yaw = yawDegrees * PI.toFloat() / 180f
     private val pitch = pitchDegrees * PI.toFloat() / 180f
     private val cosYaw = cos(yaw)
@@ -1153,6 +1194,102 @@ private fun hitTestPlanet(
         }
     }
     return null
+}
+
+private fun hitTestIsoHouse(
+    offset: Offset,
+    bounds: RectF,
+    chartStyle: ChartStyle,
+    selectedHouseLifts: List<SelectedHouseLift>,
+    projection: IsoProjection,
+): Int? {
+    val houses = buildIsoHouses(chartStyle, bounds, selectedHouseLifts, projection)
+        .sortedWith(
+            compareByDescending<IsoHouse> { it.selectedProgress }
+                .thenByDescending { it.depth },
+        )
+    return houses.firstOrNull { house ->
+        pointInPolygon(offset, house.topPoints)
+    }?.houseIndex
+}
+
+private fun hitTestIsoPlanet(
+    offset: Offset,
+    bounds: RectF,
+    houses: List<ZodiacHouse>,
+    chartStyle: ChartStyle,
+    chartTheme: ChartTheme,
+    density: Float,
+    usePlanetIcons: Boolean,
+    selectedHouseLifts: List<SelectedHouseLift>,
+    projection: IsoProjection,
+): VedicPlanetSelection? {
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textAlign = Paint.Align.CENTER
+        isFakeBoldText = true
+        textSize = chartTheme.planetTextSizeSp * density
+    }
+    val count = min(houses.size, 12)
+    for (houseIndex in 0 until count) {
+        val labelBoxes = labelBoxesFor(chartStyle, houseIndex, bounds, paint.textSize) ?: continue
+        val labels = planetLabels(houses[houseIndex], usePlanetIcons)
+        if (labels.isEmpty()) continue
+        val names = planetNames(houses[houseIndex])
+        val layout = buildPlanetGrid(
+            tokens = labels,
+            box = labelBoxes.planetBox,
+            paint = paint,
+            baseTextSize = chartTheme.planetTextSizeSp * density,
+            maxRows = maxPlanetRowsFor(chartStyle, houseIndex),
+        )
+        val z = projection.blockHeight + projection.selectedLiftHeight * liftProgressFor(houseIndex, selectedHouseLifts) + 10f
+        layout.tokens.forEachIndexed { planetIndex, token ->
+            val row = planetIndex / layout.columns
+            val column = planetIndex % layout.columns
+            val flatX = labelBoxes.planetBox.left + layout.cellWidth * column + layout.cellWidth / 2f
+            val flatY = labelBoxes.planetBox.top + layout.cellHeight * row + layout.cellHeight / 2f
+            val point = projection.project(Offset(flatX, flatY), z = z)
+            val textWidth = paint.measureText(token)
+            val hitRect = RectF(
+                point.x - textWidth / 2f - 9f * density,
+                point.y - paint.textSize * 0.68f,
+                point.x + textWidth / 2f + 9f * density,
+                point.y + paint.textSize * 0.58f,
+            )
+            if (hitRect.contains(offset.x, offset.y)) {
+                val planetName = names.getOrNull(planetIndex).orEmpty()
+                return VedicPlanetSelection(
+                    houseIndex = houseIndex,
+                    planetIndex = planetIndex,
+                    planetName = planetName.ifBlank { labels[planetIndex] },
+                    planetLabel = labels[planetIndex],
+                    house = houses[houseIndex],
+                )
+            }
+        }
+    }
+    return null
+}
+
+private fun pointInPolygon(point: Offset, polygon: List<Offset>): Boolean {
+    if (polygon.size < 3) return false
+    var inside = false
+    var previousIndex = polygon.lastIndex
+    for (index in polygon.indices) {
+        val current = polygon[index]
+        val previous = polygon[previousIndex]
+        val crossesY = (current.y > point.y) != (previous.y > point.y)
+        val intersectX = if (previous.y != current.y) {
+            (previous.x - current.x) * (point.y - current.y) / (previous.y - current.y) + current.x
+        } else {
+            current.x
+        }
+        if (crossesY && point.x < intersectX) {
+            inside = !inside
+        }
+        previousIndex = index
+    }
+    return inside
 }
 
 private fun planetBoxFor(
@@ -1926,6 +2063,7 @@ private data class IsoHouse(
     val topPoints: List<Offset>,
     val depth: Float,
     val selectedProgress: Float,
+    val extraZ: Float,
 )
 
 private data class LabelBoxes(
