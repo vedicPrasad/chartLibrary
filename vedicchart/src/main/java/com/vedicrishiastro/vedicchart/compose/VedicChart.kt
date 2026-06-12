@@ -487,7 +487,6 @@ private fun drawIsoHousePrism(
             )
         }
         canvas.drawPath(wallPath, wallPaint)
-        canvas.drawPath(wallPath, wirePaint)
     }
     canvas.drawPath(topPath, topPaint)
     if (house.drawBaseOutline) {
@@ -497,7 +496,6 @@ private fun drawIsoHousePrism(
         canvas.drawPath(topPath, wirePaint)
     }
     house.cornerBasePoints.indices.forEach { index ->
-        if (house.wallEdgeVisible.getOrNull(index) == false) return@forEach
         val base = house.cornerBasePoints[index]
         val top = house.cornerTopPoints.getOrNull(index) ?: return@forEach
         canvas.drawLine(base.x, base.y, top.x, top.y, wirePaint)
