@@ -46,6 +46,7 @@ private const val MinPitchDegrees = -85f
 private const val MaxPitchDegrees = 85f
 private val IsoSurfaceColor: Int = Color.rgb(235, 245, 255)
 private val IsoSelectedSurfaceColor: Int = Color.rgb(255, 236, 196)
+private const val EastBlockGapRatio = 0.008f
 
 data class VedicPlanetSelection(
     val houseIndex: Int,
@@ -323,6 +324,9 @@ private fun drawIsometricVedicChart(
     restingHouses.forEach { house ->
         drawIsoHousePrism(canvas, house, paints, lineReveal)
     }
+    if (chartStyle == ChartStyle.EAST) {
+        drawEastChartLineOverlay(canvas, bounds, projection, lineReveal, paints)
+    }
     if (textProgress > 0f) {
         drawIsoHouseTexts(
             canvas = canvas,
@@ -374,7 +378,10 @@ private fun drawEastCenterTile(
         bounds.left + third * 2f,
         bounds.top + third * 2f,
     )
-    val topPoints = centerRect.corners().map { projection.project(it, z = projection.blockHeight) }
+    val flatPoints = insetPolygon(centerRect.corners(), bounds.width() * EastBlockGapRatio)
+    val basePoints = flatPoints.map { projection.project(it, z = 0f) }
+    val topPoints = flatPoints.map { projection.project(it, z = projection.blockHeight) }
+    val basePath = pointsToPath(basePoints)
     val topPath = pointsToPath(topPoints)
     val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
@@ -387,8 +394,83 @@ private fun drawEastCenterTile(
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
     }
+    for (index in basePoints.indices) {
+        val next = (index + 1) % basePoints.size
+        val topA = topPoints[index]
+        val topB = topPoints[next]
+        val baseB = basePoints[next]
+        val baseA = basePoints[index]
+        val wallPath = Path().apply {
+            moveTo(topA.x, topA.y)
+            lineTo(topB.x, topB.y)
+            lineTo(baseB.x, baseB.y)
+            lineTo(baseA.x, baseA.y)
+            close()
+        }
+        val wallPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            color = withAlpha(
+                if ((topA.x + topB.x + baseA.x + baseB.x) / 4f >= topPathBoundsCenterX(topPoints)) {
+                    Color.rgb(245, 137, 38)
+                } else {
+                    Color.rgb(33, 128, 238)
+                },
+                (245 * alpha).toInt(),
+            )
+        }
+        canvas.drawPath(wallPath, wallPaint)
+    }
     canvas.drawPath(topPath, fillPaint)
+    canvas.drawPath(basePath, strokePaint)
     canvas.drawPath(topPath, strokePaint)
+    basePoints.indices.forEach { index ->
+        val base = basePoints[index]
+        val top = topPoints[index]
+        canvas.drawLine(base.x, base.y, top.x, top.y, strokePaint)
+    }
+}
+
+private fun drawEastChartLineOverlay(
+    canvas: android.graphics.Canvas,
+    bounds: RectF,
+    projection: IsoProjection,
+    reveal: Float,
+    paints: ChartPaints,
+) {
+    val alpha = smoothStep(reveal)
+    if (alpha <= 0f) return
+    val third = bounds.width() / 3f
+    val x1 = bounds.left + third
+    val x2 = bounds.left + third * 2f
+    val y1 = bounds.top + third
+    val y2 = bounds.top + third * 2f
+    val z = projection.blockHeight + 0.5f
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = paints.line.strokeWidth
+        color = withAlpha(paints.line.color, (255 * alpha).toInt())
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+    }
+
+    fun drawProjectedLine(start: Offset, end: Offset) {
+        val projectedStart = projection.project(start, z = z)
+        val projectedEnd = projection.project(end, z = z)
+        canvas.drawLine(projectedStart.x, projectedStart.y, projectedEnd.x, projectedEnd.y, paint)
+    }
+
+    drawProjectedLine(Offset(bounds.left, bounds.top), Offset(bounds.right, bounds.top))
+    drawProjectedLine(Offset(bounds.right, bounds.top), Offset(bounds.right, bounds.bottom))
+    drawProjectedLine(Offset(bounds.right, bounds.bottom), Offset(bounds.left, bounds.bottom))
+    drawProjectedLine(Offset(bounds.left, bounds.bottom), Offset(bounds.left, bounds.top))
+    drawProjectedLine(Offset(x1, bounds.top), Offset(x1, bounds.bottom))
+    drawProjectedLine(Offset(x2, bounds.top), Offset(x2, bounds.bottom))
+    drawProjectedLine(Offset(bounds.left, y1), Offset(bounds.right, y1))
+    drawProjectedLine(Offset(bounds.left, y2), Offset(bounds.right, y2))
+    drawProjectedLine(Offset(bounds.left, bounds.top), Offset(x1, y1))
+    drawProjectedLine(Offset(bounds.right, bounds.top), Offset(x2, y1))
+    drawProjectedLine(Offset(bounds.left, bounds.bottom), Offset(x1, y2))
+    drawProjectedLine(Offset(bounds.right, bounds.bottom), Offset(x2, y2))
 }
 
 private fun buildIsoHouses(
@@ -399,13 +481,19 @@ private fun buildIsoHouses(
 ): List<IsoHouse> {
     return (0 until 12).mapNotNull { houseIndex ->
         val path = selectedHousePath(chartStyle, houseIndex, bounds) ?: return@mapNotNull null
-        val points = samplePath(path, 64).ifEmpty { return@mapNotNull null }
+        val sampledPoints = samplePath(path, 64).ifEmpty { return@mapNotNull null }
+        val points = if (chartStyle == ChartStyle.EAST) {
+            insetPolygon(eastHouseCornerPoints(houseIndex, bounds), bounds.width() * EastBlockGapRatio)
+                .ifEmpty { sampledPoints }
+        } else {
+            sampledPoints
+        }
         val selectedLift = liftProgressFor(houseIndex, selectedHouseLifts)
         val height = projection.blockHeight
         val extraZ = projection.selectedLiftHeight * selectedLift
         val basePoints = points.map { projection.project(it, z = extraZ) }
         val topPoints = points.map { projection.project(it, z = height + extraZ) }
-        val cornerPoints = houseCornerPoints(chartStyle, houseIndex, bounds)
+        val cornerPoints = if (chartStyle == ChartStyle.EAST) points else houseCornerPoints(chartStyle, houseIndex, bounds)
         IsoHouse(
             houseIndex = houseIndex,
             sourcePoints = points,
@@ -612,6 +700,26 @@ private fun pointsToPath(points: List<Offset>): Path {
             lineTo(points[index].x, points[index].y)
         }
         close()
+    }
+}
+
+private fun insetPolygon(points: List<Offset>, amount: Float): List<Offset> {
+    if (points.size < 3 || amount <= 0f) return points
+    val centerX = points.map { it.x }.average().toFloat()
+    val centerY = points.map { it.y }.average().toFloat()
+    return points.map { point ->
+        val dx = centerX - point.x
+        val dy = centerY - point.y
+        val distance = kotlin.math.sqrt(dx * dx + dy * dy)
+        if (distance <= amount) {
+            point
+        } else {
+            val ratio = amount / distance
+            Offset(
+                x = point.x + dx * ratio,
+                y = point.y + dy * ratio,
+            )
+        }
     }
 }
 
