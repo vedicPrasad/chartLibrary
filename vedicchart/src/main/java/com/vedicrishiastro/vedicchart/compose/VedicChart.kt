@@ -41,6 +41,10 @@ import kotlin.math.sin
 
 private val SmoothLineEasing = CubicBezierEasing(0.16f, 1f, 0.3f, 1f)
 private val SmoothRevealEasing = CubicBezierEasing(0.2f, 0.92f, 0.18f, 1f)
+private const val MinYawDegrees = -85f
+private const val MaxYawDegrees = 85f
+private const val MinPitchDegrees = -85f
+private const val MaxPitchDegrees = 85f
 
 data class VedicPlanetSelection(
     val houseIndex: Int,
@@ -155,8 +159,8 @@ fun VedicChart(
         modifier = modifier
             .pointerInput(Unit) {
                 detectDragGestures { _, dragAmount ->
-                    rotationYawDegrees = normalizeDegrees(rotationYawDegrees + dragAmount.x * 0.42f)
-                    rotationPitchDegrees = normalizeDegrees(rotationPitchDegrees - dragAmount.y * 0.42f)
+                    rotationYawDegrees = clampYaw(rotationYawDegrees + dragAmount.x * 0.42f)
+                    rotationPitchDegrees = clampPitch(rotationPitchDegrees - dragAmount.y * 0.42f)
                 }
             }
             .pointerInput(houses, chartStyle, chartTheme, density, usePlanetIcons, selectedHouseLifts, rotationYawDegrees, rotationPitchDegrees) {
@@ -1351,9 +1355,12 @@ private fun rotatePoint(point: Offset, pivot: Offset, degrees: Float): Offset {
     )
 }
 
-private fun normalizeDegrees(value: Float): Float {
-    val normalized = value % 360f
-    return if (normalized < 0f) normalized + 360f else normalized
+private fun clampYaw(value: Float): Float {
+    return value.coerceIn(MinYawDegrees, MaxYawDegrees)
+}
+
+private fun clampPitch(value: Float): Float {
+    return value.coerceIn(MinPitchDegrees, MaxPitchDegrees)
 }
 
 private fun drawSelectedHouseHighlight(
