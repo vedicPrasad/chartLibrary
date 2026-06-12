@@ -431,11 +431,14 @@ private fun buildIsoHouses(
         val extraZ = projection.selectedLiftHeight * selectedLift
         val basePoints = points.map { projection.project(it, z = extraZ) }
         val topPoints = points.map { projection.project(it, z = height + extraZ) }
+        val cornerPoints = houseCornerPoints(chartStyle, houseIndex, bounds)
         val connectedEastBlock = chartStyle == ChartStyle.EAST && selectedLift <= 0f
         IsoHouse(
             houseIndex = houseIndex,
             basePoints = basePoints,
             topPoints = topPoints,
+            cornerBasePoints = cornerPoints.map { projection.project(it, z = extraZ) },
+            cornerTopPoints = cornerPoints.map { projection.project(it, z = height + extraZ) },
             wallEdgeVisible = if (connectedEastBlock) eastOuterEdgeVisibility(points, bounds) else List(points.size) { true },
             depth = basePoints.map { it.y }.average().toFloat(),
             selectedProgress = selectedLift,
@@ -501,10 +504,22 @@ private fun drawIsoHousePrism(
             color = withAlpha(sideColor, (255 * alpha).toInt())
         }
         canvas.drawPath(wallPath, wallPaint)
-        canvas.drawPath(wallPath, edgePaint)
     }
     canvas.drawPath(topPath, topPaint)
     canvas.drawPath(topPath, edgePaint)
+    drawIsoHouseCornerSideEdges(canvas, house, edgePaint)
+}
+
+private fun drawIsoHouseCornerSideEdges(
+    canvas: android.graphics.Canvas,
+    house: IsoHouse,
+    edgePaint: Paint,
+) {
+    house.cornerBasePoints.indices.forEach { index ->
+        val base = house.cornerBasePoints[index]
+        val top = house.cornerTopPoints.getOrNull(index) ?: return@forEach
+        canvas.drawLine(base.x, base.y, top.x, top.y, edgePaint)
+    }
 }
 
 private fun drawIsoHouseTexts(
@@ -1449,6 +1464,14 @@ private fun selectedHousePath(chartStyle: ChartStyle, houseIndex: Int, bounds: R
     }
 }
 
+private fun houseCornerPoints(chartStyle: ChartStyle, houseIndex: Int, bounds: RectF): List<Offset> {
+    return when (chartStyle) {
+        ChartStyle.NORTH -> northHouseCornerPoints(houseIndex, bounds)
+        ChartStyle.EAST -> eastHouseCornerPoints(houseIndex, bounds)
+        ChartStyle.SOUTH -> houseHitBoxes(chartStyle).getOrNull(houseIndex)?.toRect(bounds)?.corners().orEmpty()
+    }
+}
+
 private fun eastHousePath(houseIndex: Int, bounds: RectF): Path? {
     val points = eastHouseCornerPoints(houseIndex, bounds)
     if (points.isEmpty()) return null
@@ -1477,6 +1500,37 @@ private fun eastHouseCornerPoints(houseIndex: Int, bounds: RectF): List<Offset> 
         9 -> listOf(Offset(x2, y1), Offset(x3, y1), Offset(x3, y2), Offset(x2, y2))
         10 -> listOf(Offset(x3, y0), Offset(x3, y1), Offset(x2, y1))
         11 -> listOf(Offset(x2, y0), Offset(x3, y0), Offset(x2, y1))
+        else -> emptyList()
+    }
+}
+
+private fun northHouseCornerPoints(houseIndex: Int, bounds: RectF): List<Offset> {
+    val topLeft = relPoint(bounds, 0f, 0f)
+    val top = relPoint(bounds, 0.5f, 0f)
+    val topRight = relPoint(bounds, 1f, 0f)
+    val right = relPoint(bounds, 1f, 0.5f)
+    val bottomRight = relPoint(bounds, 1f, 1f)
+    val bottom = relPoint(bounds, 0.5f, 1f)
+    val bottomLeft = relPoint(bounds, 0f, 1f)
+    val left = relPoint(bounds, 0f, 0.5f)
+    val center = relPoint(bounds, 0.5f, 0.5f)
+    val northWest = relPoint(bounds, 0.25f, 0.25f)
+    val northEast = relPoint(bounds, 0.75f, 0.25f)
+    val southEast = relPoint(bounds, 0.75f, 0.75f)
+    val southWest = relPoint(bounds, 0.25f, 0.75f)
+    return when (houseIndex) {
+        0 -> listOf(top, northEast, center, northWest)
+        1 -> listOf(topLeft, top, northWest)
+        2 -> listOf(topLeft, northWest, left)
+        3 -> listOf(left, northWest, center, southWest)
+        4 -> listOf(left, southWest, bottomLeft)
+        5 -> listOf(bottomLeft, southWest, bottom)
+        6 -> listOf(bottom, southWest, center, southEast)
+        7 -> listOf(bottom, southEast, bottomRight)
+        8 -> listOf(right, bottomRight, southEast)
+        9 -> listOf(northEast, right, southEast, center)
+        10 -> listOf(topRight, right, northEast)
+        11 -> listOf(top, topRight, northEast)
         else -> emptyList()
     }
 }
@@ -1802,6 +1856,8 @@ private data class IsoHouse(
     val houseIndex: Int,
     val basePoints: List<Offset>,
     val topPoints: List<Offset>,
+    val cornerBasePoints: List<Offset>,
+    val cornerTopPoints: List<Offset>,
     val wallEdgeVisible: List<Boolean>,
     val depth: Float,
     val selectedProgress: Float,
