@@ -45,24 +45,9 @@ private const val MaxYawDegrees = 85f
 private const val MinPitchDegrees = -85f
 private const val MaxPitchDegrees = 85f
 private val IsoSurfaceColor: Int = Color.rgb(250, 246, 236)
-private val IsoSelectedSurfaceColor: Int = Color.rgb(242, 143, 43)
 private val IsoEdgeColor: Int = Color.rgb(43, 35, 28)
 private val IsoSignExtrudeColor: Int = Color.rgb(116, 82, 42)
 private const val EastBlockGapRatio = 0f
-private val IsoHouseTopColors: IntArray = intArrayOf(
-    Color.rgb(244, 208, 127),
-    Color.rgb(136, 198, 181),
-    Color.rgb(237, 156, 122),
-    Color.rgb(142, 181, 230),
-    Color.rgb(210, 168, 219),
-    Color.rgb(226, 196, 112),
-    Color.rgb(128, 197, 211),
-    Color.rgb(231, 145, 153),
-    Color.rgb(165, 204, 132),
-    Color.rgb(185, 166, 224),
-    Color.rgb(224, 172, 105),
-    Color.rgb(132, 187, 158),
-)
 
 data class VedicPlanetSelection(
     val houseIndex: Int,
@@ -345,7 +330,7 @@ private fun drawIsometricVedicChart(
         drawEastCenterTile(canvas, bounds, projection, lineReveal, paints)
     }
     restingHouses.forEach { house ->
-        drawIsoHousePrism(canvas, house, paints, chartStyle, lineReveal)
+        drawIsoHousePrism(canvas, house, paints, theme, chartStyle, lineReveal)
     }
     if (textProgress > 0f) {
         drawIsoHouseTexts(
@@ -363,7 +348,7 @@ private fun drawIsometricVedicChart(
         )
     }
     liftedHouses.forEach { house ->
-        drawIsoHousePrism(canvas, house, paints, chartStyle, lineReveal)
+        drawIsoHousePrism(canvas, house, paints, theme, chartStyle, lineReveal)
     }
     if (textProgress > 0f) {
         drawIsoHouseTexts(
@@ -451,6 +436,7 @@ private fun drawIsoHousePrism(
     canvas: android.graphics.Canvas,
     house: IsoHouse,
     paints: ChartPaints,
+    theme: ChartTheme,
     chartStyle: ChartStyle,
     reveal: Float,
 ) {
@@ -460,7 +446,7 @@ private fun drawIsoHousePrism(
         style = Paint.Style.FILL
         color = Color.argb((18 * alpha).toInt(), 0, 0, 0)
     }
-    val topColor = isoHouseTopColor(house.houseIndex, house.selectedProgress)
+    val topColor = isoHouseTopColor(theme, house.houseIndex, house.selectedProgress)
     val topPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
         color = withAlpha(topColor, (255 * alpha).toInt())
@@ -726,15 +712,10 @@ private fun topPathBoundsCenterY(points: List<Offset>): Float {
     return (minY + maxY) / 2f
 }
 
-private fun isoHouseTopColor(houseIndex: Int, selectedProgress: Float): Int {
-    val baseColor = IsoHouseTopColors[houseIndex.floorMod(IsoHouseTopColors.size)]
+private fun isoHouseTopColor(theme: ChartTheme, houseIndex: Int, selectedProgress: Float): Int {
+    val baseColor = theme.getHouseColor(houseIndex)
     if (selectedProgress <= 0f) return baseColor
-    val selectedColor = mixColors(IsoSelectedSurfaceColor, baseColor, 0.18f)
-    return mixColors(baseColor, selectedColor, selectedProgress.coerceIn(0f, 1f))
-}
-
-private fun Int.floorMod(divisor: Int): Int {
-    return ((this % divisor) + divisor) % divisor
+    return mixColors(baseColor, theme.selectedHouseColor, selectedProgress.coerceIn(0f, 1f))
 }
 
 private class IsoProjection(

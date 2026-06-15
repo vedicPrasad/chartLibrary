@@ -64,7 +64,7 @@ private fun ChartDemoScreen() {
         verticalArrangement = Arrangement.spacedBy(12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        ChartSection("North Indian", ChartStyle.NORTH, ChartTheme.light(), houses)
+        ChartSection("North Indian", ChartStyle.NORTH, ChartTheme.temple(), houses)
         ChartSection("South Indian", ChartStyle.SOUTH, ChartTheme.temple(), houses)
         ChartSection("East Indian", ChartStyle.EAST, ChartTheme.temple(), houses)
     }
@@ -79,6 +79,14 @@ private fun ChartSection(
 ) {
     var selectedPlanet by remember { mutableStateOf<VedicPlanetSelection?>(null) }
     var usePlanetIcons by remember { mutableStateOf(false) }
+    var usePreviousChartColors by remember { mutableStateOf(false) }
+    val effectiveChartTheme = remember(chartTheme, usePreviousChartColors) {
+        if (usePreviousChartColors) {
+            chartTheme.withPreviousHouseColors()
+        } else {
+            chartTheme
+        }
+    }
 
     Text(
         text = title,
@@ -96,10 +104,21 @@ private fun ChartSection(
             onCheckedChange = { usePlanetIcons = it },
         )
     }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(text = "Previous chart colors")
+        Switch(
+            checked = usePreviousChartColors,
+            onCheckedChange = { usePreviousChartColors = it },
+        )
+    }
     VedicChart(
         houses = houses,
         chartStyle = chartStyle,
-        chartTheme = chartTheme,
+        chartTheme = effectiveChartTheme,
         usePlanetIcons = usePlanetIcons,
         onPlanetSelected = { selectedPlanet = it },
         modifier = Modifier
@@ -125,6 +144,23 @@ private fun ChartSection(
             },
         )
     }
+}
+
+private fun ChartTheme.withPreviousHouseColors(): ChartTheme {
+    val previousTheme = ChartTheme.light()
+    return ChartTheme.Builder()
+        .backgroundColor(backgroundColor)
+        .borderColor(borderColor)
+        .signTextColor(signTextColor)
+        .planetTextColor(planetTextColor)
+        .accentColor(accentColor)
+        .houseColors(*previousTheme.houseColors)
+        .selectedHouseColor(previousTheme.selectedHouseColor)
+        .borderWidth(borderWidth)
+        .signTextSizeSp(signTextSizeSp)
+        .planetTextSizeSp(planetTextSizeSp)
+        .showSignNames(shouldShowSignNames())
+        .build()
 }
 
 private val PremiumColorScheme = lightColorScheme(
