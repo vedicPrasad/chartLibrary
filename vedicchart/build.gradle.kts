@@ -4,8 +4,8 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
-group = "com.github.YOUR_GITHUB_USERNAME"
-version = "1.0.0"
+group = "com.github.vedicPrasad"
+version = "1.0.4"
 
 android {
     namespace = "com.vedicrishiastro.vedicchart"
@@ -57,7 +57,7 @@ afterEvaluate {
 
                 groupId = "com.github.vedicPrasad"
                 artifactId = "astrology_chart"
-                version = "1.0.0"
+                version = "1.0.4"
             }
         }
     }
