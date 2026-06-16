@@ -323,7 +323,7 @@ private fun drawIsometricVedicChart(
         .sortedBy { it.depth }
     val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
-        color = IsoSurfaceColor
+        color = Color.TRANSPARENT
     }
     canvas.drawRoundRect(bounds, outerCornerRadius(1f), outerCornerRadius(1f), backgroundPaint)
     if (chartStyle == ChartStyle.EAST) {
