@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -121,9 +120,7 @@ private fun ChartSection(
         chartTheme = effectiveChartTheme,
         usePlanetIcons = usePlanetIcons,
         onPlanetSelected = { selectedPlanet = it },
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(340.dp),
+        modifier = Modifier,
     )
 
     selectedPlanet?.let { planet ->
@@ -178,5 +175,5 @@ private val PremiumColorScheme = lightColorScheme(
 )
 
 private const val DUMMY_CHART_JSON = """
-[{"sign":8,"sign_name":"Scorpio","planet":[],"planet_small":[],"planet_degree":[]},{"sign":9,"sign_name":"Sagittarius","planet":[],"planet_small":[],"planet_degree":[]},{"sign":10,"sign_name":"Capricorn","planet":["MOON"],"planet_small":["Mo "],"planet_degree":[]},{"sign":11,"sign_name":"Aquarius","planet":[],"planet_small":[],"planet_degree":[]},{"sign":12,"sign_name":"Pisces","planet":[],"planet_small":[],"planet_degree":[]},{"sign":1,"sign_name":"Aries","planet":["SUN","MERCURY","RAHU"],"planet_small":["Su ","Me ","Ra "],"planet_degree":[]},{"sign":2,"sign_name":"Taurus","planet":[],"planet_small":[],"planet_degree":[]},{"sign":3,"sign_name":"Gemini","planet":["MARS","VENUS","SATURN"],"planet_small":["Ma ","Ve ","Sa "],"planet_degree":[]},{"sign":4,"sign_name":"Cancer","planet":[],"planet_small":[],"planet_degree":[]},{"sign":5,"sign_name":"Leo","planet":["JUPITER"],"planet_small":["Ju "],"planet_degree":[]},{"sign":6,"sign_name":"Virgo","planet":[],"planet_small":[],"planet_degree":[]},{"sign":7,"sign_name":"Libra","planet":["KETU"],"planet_small":["Ke "],"planet_degree":[]}]
+[{"sign":2,"sign_name":"Taurus","planet":[],"planet_small":[],"planet_degree":[]},{"sign":3,"sign_name":"Gemini","planet":[],"planet_small":[],"planet_degree":[]},{"sign":4,"sign_name":"Cancer","planet":["MOON","RAHU"],"planet_small":["Mo ","Ra "],"planet_degree":[]},{"sign":5,"sign_name":"Leo","planet":[],"planet_small":[],"planet_degree":[]},{"sign":6,"sign_name":"Virgo","planet":[],"planet_small":[],"planet_degree":[]},{"sign":7,"sign_name":"Libra","planet":["MARS"],"planet_small":["Ma "],"planet_degree":[]},{"sign":8,"sign_name":"Scorpio","planet":[],"planet_small":[],"planet_degree":[]},{"sign":9,"sign_name":"Sagittarius","planet":[],"planet_small":[],"planet_degree":[]},{"sign":10,"sign_name":"Capricorn","planet":["KETU"],"planet_small":["Ke "],"planet_degree":[]},{"sign":11,"sign_name":"Aquarius","planet":["SUN"],"planet_small":["Su "],"planet_degree":[]},{"sign":12,"sign_name":"Pisces","planet":["MERCURY","JUPITER","VENUS"],"planet_small":["Me ","Ju ","Ve "],"planet_degree":[]},{"sign":1,"sign_name":"Aries","planet":["SATURN"],"planet_small":["Sa "],"planet_degree":[]}]
 """

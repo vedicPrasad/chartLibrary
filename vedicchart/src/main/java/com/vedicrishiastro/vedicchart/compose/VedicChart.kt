@@ -12,6 +12,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -24,7 +25,10 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vedicrishiastro.vedicchart.ChartStyle
 import com.vedicrishiastro.vedicchart.ChartTheme
@@ -44,6 +48,8 @@ private const val MinYawDegrees = -85f
 private const val MaxYawDegrees = 85f
 private const val MinPitchDegrees = -85f
 private const val MaxPitchDegrees = 85f
+private const val MaxPlanetsPerHouse = 10
+private const val HouseNumberTextSizeBoost = 2f
 private val IsoSurfaceColor: Int = Color.rgb(250, 246, 236)
 private val IsoEdgeColor: Int = Color.rgb(43, 35, 28)
 private val IsoSignExtrudeColor: Int = Color.rgb(116, 82, 42)
@@ -66,10 +72,12 @@ fun VedicChart(
     animate: Boolean = true,
     animationDurationMillis: Int = 1200,
     usePlanetIcons: Boolean = false,
+    chartSizeInset: Dp = 5.dp,
     selectedHouseIndex: Int? = null,
     onHouseSelected: ((houseIndex: Int, house: ZodiacHouse) -> Unit)? = null,
     onPlanetSelected: ((VedicPlanetSelection) -> Unit)? = null,
 ) {
+    val chartSide = (LocalConfiguration.current.screenWidthDp.dp - chartSizeInset).coerceAtLeast(0.dp)
     val density = LocalDensity.current.density
     var internalSelectedHouseIndex by remember { mutableStateOf<Int?>(null) }
     var rotationYawDegrees by remember { mutableStateOf(0f) }
@@ -155,11 +163,16 @@ fun VedicChart(
     val progress = lineReveal.value
     val textProgress = textReveal.value
     val selectedHouseLifts = listOfNotNull(
-        outgoingSelectedHouseIndex?.let { SelectedHouseLift(it, outgoingLiftProgress.value) },
-        incomingSelectedHouseIndex?.let { SelectedHouseLift(it, incomingLiftProgress.value) },
+        outgoingSelectedHouseIndex?.let {
+            SelectedHouseLift(visualHouseIndexForOrFallback(chartStyle, houses.getOrNull(it), it), outgoingLiftProgress.value)
+        },
+        incomingSelectedHouseIndex?.let {
+            SelectedHouseLift(visualHouseIndexForOrFallback(chartStyle, houses.getOrNull(it), it), incomingLiftProgress.value)
+        },
     ).filter { it.progress > 0f }
     Canvas(
         modifier = modifier
+            .requiredSize(chartSide)
             .pointerInput(Unit) {
                 detectDragGestures { _, dragAmount ->
                     rotationYawDegrees = clampYaw(rotationYawDegrees + dragAmount.x * 0.42f)
@@ -187,13 +200,14 @@ fun VedicChart(
                         return@detectTapGestures
                     }
                 }
-                val houseIndex = hitTestIsoHouse(
+                val visualHouseIndex = hitTestIsoHouse(
                     offset = offset,
                     bounds = bounds,
                     chartStyle = chartStyle,
                     selectedHouseLifts = selectedHouseLifts,
                     projection = projection,
                 )
+                val houseIndex = visualHouseIndex?.let { dataHouseIndexForVisualHouseIndex(chartStyle, houses, it) }
                 if (houseIndex != null && houseIndex in houses.indices) {
                     if (selectedHouseIndex == null) {
                         internalSelectedHouseIndex = if (internalSelectedHouseIndex == houseIndex) {
@@ -344,7 +358,9 @@ private fun drawIsometricVedicChart(
             projection = projection,
             textProgress = textProgress,
             usePlanetIcons = usePlanetIcons,
-            houseFilter = { houseIndex -> liftProgressFor(houseIndex, selectedHouseLifts) <= 0f },
+            houseFilter = { houseIndex ->
+                liftProgressFor(visualHouseIndexForOrFallback(chartStyle, houses.getOrNull(houseIndex), houseIndex), selectedHouseLifts) <= 0f
+            },
         )
     }
     liftedHouses.forEach { house ->
@@ -362,7 +378,9 @@ private fun drawIsometricVedicChart(
             projection = projection,
             textProgress = textProgress,
             usePlanetIcons = usePlanetIcons,
-            houseFilter = { houseIndex -> liftProgressFor(houseIndex, selectedHouseLifts) > 0f },
+            houseFilter = { houseIndex ->
+                liftProgressFor(visualHouseIndexForOrFallback(chartStyle, houses.getOrNull(houseIndex), houseIndex), selectedHouseLifts) > 0f
+            },
         )
     }
 }
@@ -538,26 +556,57 @@ private fun drawIsoHouseTexts(
     val count = min(houses.size, 12)
     for (houseIndex in 0 until count) {
         if (!houseFilter(houseIndex)) continue
-        val liftProgress = liftProgressFor(houseIndex, selectedHouseLifts)
+        val visualHouseIndex = visualHouseIndexFor(chartStyle, houses[houseIndex], houseIndex)
+        val liftProgress = liftProgressFor(visualHouseIndex, selectedHouseLifts)
         val height = projection.blockHeight + projection.selectedLiftHeight * liftProgress
-        val labelBoxes = labelBoxesFor(chartStyle, houseIndex, bounds, paints.planetText.textSize) ?: continue
-        drawIsoSign(canvas, houses[houseIndex], labelBoxes.signBox, paints, theme, projection, height, textProgress)
-        drawIsoPlanets(canvas, houses[houseIndex], labelBoxes.planetBox, paints, maxPlanetRowsFor(chartStyle, houseIndex), projection, height, textProgress, usePlanetIcons)
+        val houseLabel = houseLabelText(chartStyle, houses[houseIndex], houseIndex, theme)
+        val labelBoxes = labelBoxesFor(chartStyle, visualHouseIndex, bounds, paints.planetText.textSize, houseLabel.isNotBlank()) ?: continue
+        drawIsoSign(canvas, houseLabel, labelBoxes.signBox, paints, projection, height, textProgress)
+        val planetPlacements = drawIsoHousePlanets(
+            canvas = canvas,
+            house = houses[houseIndex],
+            houseIndex = visualHouseIndex,
+            bounds = bounds,
+            signBox = labelBoxes.signBox,
+            paints = paints,
+            projection = projection,
+            height = height,
+            textProgress = textProgress,
+            chartStyle = chartStyle,
+            usePlanetIcons = usePlanetIcons,
+        )
+        if (chartStyle == ChartStyle.NORTH && houseIndex == 0) {
+            drawIsoAscendantLabel(
+                canvas = canvas,
+                houseIndex = visualHouseIndex,
+                bounds = bounds,
+                signBox = labelBoxes.signBox,
+                planetPlacements = planetPlacements,
+                paints = paints,
+                projection = projection,
+                height = height,
+                textProgress = textProgress,
+            )
+        }
     }
 }
 
 private fun drawIsoSign(
     canvas: android.graphics.Canvas,
-    house: ZodiacHouse,
+    signText: String,
     box: RectF,
     paints: ChartPaints,
-    theme: ChartTheme,
     projection: IsoProjection,
     height: Float,
     textProgress: Float,
 ) {
-    val signText = if (theme.shouldShowSignNames()) "${house.signName} (${house.sign})" else house.sign.toString()
-    val text = fitSingleLine(signText, paints.signText, paints.signBaseTextSize * 0.86f, box.width(), minTextSize = 7f)
+    val text = fitSingleLine(
+        signText,
+        paints.signText,
+        paints.signBaseTextSize * 0.86f + HouseNumberTextSizeBoost,
+        max(1f, box.width() - signLinePadding(box) * 2f),
+        minTextSize = 7f,
+    )
     if (text.isBlank()) return
     val point = projection.project(Offset(box.centerX(), box.centerY()), z = height + 8f)
     val baselineY = point.y + centeredTextOffset(paints.signText)
@@ -590,7 +639,7 @@ private fun drawIsoPlanets(
 ) {
     val tokens = planetLabels(house, usePlanetIcons)
     if (tokens.isEmpty()) return
-    val layout = buildPlanetGrid(tokens, box, paints.planetText, paints.planetBaseTextSize * 0.82f, maxRows)
+    val layout = buildPlanetGrid(tokens, box, paints.planetText, crowdedPlanetTextSize(paints.planetBaseTextSize * 0.82f, tokens.size), maxRows)
     if (layout.tokens.isEmpty()) return
     val pillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
@@ -616,36 +665,133 @@ private fun drawIsoPlanets(
     setPaintAlpha(paints.planetText, 1f)
 }
 
+private fun drawIsoHousePlanets(
+    canvas: android.graphics.Canvas,
+    house: ZodiacHouse,
+    houseIndex: Int,
+    bounds: RectF,
+    signBox: RectF,
+    paints: ChartPaints,
+    projection: IsoProjection,
+    height: Float,
+    textProgress: Float,
+    chartStyle: ChartStyle,
+    usePlanetIcons: Boolean,
+): List<PlanetPlacement> {
+    val tokens = planetLabels(house, usePlanetIcons).take(MaxPlanetsPerHouse)
+    if (tokens.isEmpty()) return emptyList()
+    val placements = buildHousePlanetPlacements(
+        tokens = tokens,
+        chartStyle = chartStyle,
+        houseIndex = houseIndex,
+        bounds = bounds,
+        signBox = signBox,
+        paint = paints.planetText,
+        baseTextSize = crowdedPlanetTextSize(paints.planetBaseTextSize * 0.82f, tokens.size),
+        maxRows = maxPlanetRowsFor(chartStyle, houseIndex),
+    )
+    if (placements.isEmpty()) return emptyList()
+    val pillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = withAlpha(mixColors(paints.planetText.color, paints.fill.color, 0.84f), (92 * textProgress).toInt())
+    }
+    setPaintAlpha(paints.planetText, textProgress)
+    placements.forEach { placement ->
+        val point = projection.project(placement.center, z = height + 10f)
+        val textWidth = paints.planetText.measureText(placement.token)
+        val pill = RectF(
+            point.x - textWidth / 2f - 7f,
+            point.y - paints.planetText.textSize * 0.62f,
+            point.x + textWidth / 2f + 7f,
+            point.y + paints.planetText.textSize * 0.52f,
+        )
+        canvas.drawRoundRect(pill, pill.height() * 0.48f, pill.height() * 0.48f, pillPaint)
+        canvas.drawText(placement.token, point.x, point.y + centeredTextOffset(paints.planetText), paints.planetText)
+    }
+    setPaintAlpha(paints.planetText, 1f)
+    return placements
+}
+
+private fun drawIsoAscendantLabel(
+    canvas: android.graphics.Canvas,
+    houseIndex: Int,
+    bounds: RectF,
+    signBox: RectF,
+    planetPlacements: List<PlanetPlacement>,
+    paints: ChartPaints,
+    projection: IsoProjection,
+    height: Float,
+    textProgress: Float,
+) {
+    val ascText = "ASC"
+    val textSize = max(7f, paints.signBaseTextSize * 0.82f)
+    paints.signText.textSize = textSize
+    val point = ascendantPlacement(
+        label = ascText,
+        houseIndex = houseIndex,
+        bounds = bounds,
+        signBox = signBox,
+        planetPlacements = planetPlacements,
+        paint = paints.signText,
+    ) ?: return
+    val projected = projection.project(point, z = height + 12f)
+    val extrudeOffset = max(1.8f, paints.signText.textSize * 0.12f)
+    val extrudePaint = Paint(paints.signText).apply {
+        color = IsoSignExtrudeColor
+        alpha = (255 * textProgress).toInt().coerceIn(0, 255)
+    }
+    val highlightPaint = Paint(paints.signText).apply {
+        color = mixColors(Color.WHITE, paints.signText.color, 0.18f)
+        alpha = (230 * textProgress).toInt().coerceIn(0, 255)
+    }
+    setPaintAlpha(paints.signText, textProgress)
+    canvas.drawText(ascText, projected.x + extrudeOffset, projected.y + centeredTextOffset(paints.signText) + extrudeOffset, extrudePaint)
+    canvas.drawText(ascText, projected.x - extrudeOffset * 0.35f, projected.y + centeredTextOffset(paints.signText) - extrudeOffset * 0.4f, highlightPaint)
+    canvas.drawText(ascText, projected.x, projected.y + centeredTextOffset(paints.signText), paints.signText)
+    setPaintAlpha(paints.signText, 1f)
+}
+
 private fun labelBoxesFor(
     chartStyle: ChartStyle,
     houseIndex: Int,
     bounds: RectF,
     planetTextSize: Float,
+    hasSignLabel: Boolean = true,
 ): LabelBoxes? {
     return when (chartStyle) {
         ChartStyle.NORTH -> northSlots().getOrNull(houseIndex)?.let { slot ->
             val signBox = slot.signBox.toRect(bounds)
             LabelBoxes(
                 signBox = signBox,
-                planetBox = planetBoxAvoidingSign(
-                    planetBox = slot.planetBox.toRect(bounds).withInset(bounds.width() * 0.012f),
-                    signBox = signBox,
-                    gap = planetSignGap(bounds),
-                ),
+                planetBox = slot.planetBox.toRect(bounds).withInset(bounds.width() * 0.012f)
+                    .let { planetBox ->
+                        if (hasSignLabel) {
+                            planetBoxAvoidingSign(planetBox, signBox, planetSignGap(bounds))
+                        } else {
+                            planetBox
+                        }
+                    },
             )
         }
         ChartStyle.SOUTH,
         ChartStyle.EAST -> houseHitBoxes(chartStyle).getOrNull(houseIndex)?.toRect(bounds)?.let { box ->
             val inset = 3f
-            val signHeight = min(box.height() * 0.34f, planetTextSize * 1.7f)
+            val signHeight = if (hasSignLabel) min(box.height() * 0.34f, planetTextSize * 1.7f) else 0f
             val signBox = RectF(box.left + inset, box.top + inset, box.right - inset, box.top + inset + signHeight)
             LabelBoxes(
                 signBox = signBox,
-                planetBox = planetBoxAvoidingSign(
-                    planetBox = RectF(box.left + inset, signBox.bottom + planetSignGap(box), box.right - inset, box.bottom - inset),
-                    signBox = signBox,
-                    gap = planetSignGap(box),
-                ),
+                planetBox = RectF(
+                    box.left + inset,
+                    if (hasSignLabel) signBox.bottom + planetSignGap(box) else box.top + inset,
+                    box.right - inset,
+                    box.bottom - inset,
+                ).let { planetBox ->
+                    if (hasSignLabel) {
+                        planetBoxAvoidingSign(planetBox, signBox, planetSignGap(box))
+                    } else {
+                        planetBox
+                    }
+                },
             )
         }
     }
@@ -813,26 +959,26 @@ private fun drawHouse(
         gap = planetSignGap(box),
     )
 
-    drawSign(canvas, house, signBox, paints, theme, textProgress, selectedLiftProgress, liftTransform)
+    drawSign(canvas, houseLabelText(chartStyle = ChartStyle.NORTH, house = house, houseIndex = houseIndex, theme = theme), signBox, paints, textProgress, selectedLiftProgress, liftTransform)
     drawPlanets(canvas, house, planetBox, paints, if (usesComplexPlanetLayout(houseIndex)) 4 else 2, textProgress, selectedLiftProgress, liftTransform, usePlanetIcons)
 }
 
 private fun drawSign(
     canvas: android.graphics.Canvas,
-    house: ZodiacHouse,
+    signText: String,
     box: RectF,
     paints: ChartPaints,
-    theme: ChartTheme,
     textProgress: Float,
     selectedLiftProgress: Float,
     liftTransform: TextLiftTransform?,
 ) {
-    val signText = if (theme.shouldShowSignNames()) {
-        "${house.signName} (${house.sign})"
-    } else {
-        house.sign.toString()
-    }
-    val text = fitSingleLine(signText, paints.signText, paints.signBaseTextSize, box.width(), minTextSize = 7f)
+    val text = fitSingleLine(
+        signText,
+        paints.signText,
+        paints.signBaseTextSize + HouseNumberTextSizeBoost,
+        max(1f, box.width() - signLinePadding(box) * 2f),
+        minTextSize = 7f,
+    )
     if (text.isBlank()) return
 
     val saveCount = canvas.save()
@@ -858,7 +1004,7 @@ private fun drawPlanets(
     if (box.width() <= 1f || box.height() <= 1f) return
 
     val tokens = planetLabels(house, usePlanetIcons)
-    val layout = buildPlanetGrid(tokens, box, paints.planetText, paints.planetBaseTextSize, maxRows)
+    val layout = buildPlanetGrid(tokens, box, paints.planetText, crowdedPlanetTextSize(paints.planetBaseTextSize, tokens.size), maxRows)
     if (layout.tokens.isEmpty()) return
 
     val saveCount = canvas.save()
@@ -936,6 +1082,317 @@ private fun buildPlanetGrid(
     )
 }
 
+private fun buildHousePlanetPlacements(
+    tokens: List<String>,
+    chartStyle: ChartStyle,
+    houseIndex: Int,
+    bounds: RectF,
+    signBox: RectF,
+    paint: Paint,
+    baseTextSize: Float,
+    maxRows: Int,
+): List<PlanetPlacement> {
+    val points = houseCornerPoints(chartStyle, houseIndex, bounds)
+    if (tokens.isEmpty() || points.size < 3) return emptyList()
+
+    val pathBounds = points.bounds()
+    val minTextSize = 6f
+    val horizontalInset = max(4f, bounds.width() * 0.012f)
+    val verticalInset = max(4f, bounds.height() * 0.012f)
+    val availableHeight = max(1f, pathBounds.height() - verticalInset * 2f)
+    var textSize = baseTextSize
+
+    while (textSize >= minTextSize) {
+        paint.textSize = textSize
+        if (tokens.size <= 2) {
+            buildSparseHousePlanetPlacements(
+                tokens = tokens,
+                points = points,
+                pathBounds = pathBounds,
+                signBox = signBox,
+                bounds = bounds,
+                paint = paint,
+                horizontalInset = horizontalInset,
+                verticalInset = verticalInset,
+            )?.let { return it }
+        }
+
+        val maxTokenWidth = tokens.maxOf { paint.measureText(it) }
+        val minCellWidth = maxTokenWidth + max(10f, textSize * 0.9f)
+        val rowHeight = textSize * 1.45f
+        val rowCount = min(maxRows, max(1, (availableHeight / rowHeight).toInt()))
+        val placements = mutableListOf<PlanetPlacement>()
+        var nextToken = 0
+
+        for (row in 0 until rowCount) {
+            if (nextToken >= tokens.size) break
+            val y = pathBounds.top + verticalInset + availableHeight * (row + 0.5f) / rowCount
+            val span = houseSpanForRow(
+                points = points,
+                y = y,
+                signBox = signBox,
+                gap = planetSignGap(bounds),
+                horizontalInset = horizontalInset,
+            ) ?: continue
+            val capacity = min(tokens.size - nextToken, max(1, (span.width() / minCellWidth).toInt()))
+            if (span.width() < minCellWidth * 0.72f) continue
+            val cellWidth = span.width() / capacity
+            for (column in 0 until capacity) {
+                val token = tokens[nextToken]
+                if (paint.measureText(token) > cellWidth * 0.86f) break
+                placements += PlanetPlacement(
+                    token = token,
+                    center = Offset(span.left + cellWidth * column + cellWidth / 2f, y),
+                )
+                nextToken += 1
+                if (nextToken >= tokens.size) break
+            }
+        }
+
+        if (nextToken >= tokens.size) return placements
+        textSize -= 1f
+    }
+
+    paint.textSize = minTextSize
+    return fallbackHousePlanetPlacements(tokens, points, signBox, bounds, paint, maxRows)
+}
+
+private fun buildSparseHousePlanetPlacements(
+    tokens: List<String>,
+    points: List<Offset>,
+    pathBounds: RectF,
+    signBox: RectF,
+    bounds: RectF,
+    paint: Paint,
+    horizontalInset: Float,
+    verticalInset: Float,
+): List<PlanetPlacement>? {
+    val maxTokenWidth = tokens.maxOf { paint.measureText(it) }
+    val tokenGap = max(8f, paint.textSize * 0.65f)
+    val requiredWidth = maxTokenWidth * tokens.size + tokenGap * (tokens.size - 1) + max(10f, paint.textSize * 0.9f)
+    val centerY = points.centroid().y.coerceIn(pathBounds.top + verticalInset, pathBounds.bottom - verticalInset)
+    val step = max(2f, paint.textSize * 0.35f)
+    val maxSteps = max(1, ((pathBounds.height() / 2f) / step).toInt())
+
+    for (stepIndex in 0..maxSteps) {
+        val offsets = if (stepIndex == 0) listOf(0f) else listOf(step * stepIndex, -step * stepIndex)
+        for (offset in offsets) {
+            val y = (centerY + offset).coerceIn(pathBounds.top + verticalInset, pathBounds.bottom - verticalInset)
+            val span = houseSpanForRow(
+                points = points,
+                y = y,
+                signBox = signBox,
+                gap = planetSignGap(bounds),
+                horizontalInset = horizontalInset,
+            ) ?: continue
+            if (span.width() < requiredWidth * 0.72f) continue
+
+            val groupWidth = min(requiredWidth, span.width())
+            val startX = span.centerX() - groupWidth / 2f
+            val cellWidth = groupWidth / tokens.size
+            val placements = tokens.mapIndexed { index, token ->
+                PlanetPlacement(
+                    token = token,
+                    center = Offset(startX + cellWidth * index + cellWidth / 2f, y),
+                )
+            }
+            if (placements.all { pointInPolygon(it.center, points) && !planetPlacementOverlapsSign(it, signBox, paint, planetSignGap(bounds)) }) {
+                return placements
+            }
+        }
+    }
+
+    return null
+}
+
+private fun fallbackHousePlanetPlacements(
+    tokens: List<String>,
+    points: List<Offset>,
+    signBox: RectF,
+    bounds: RectF,
+    paint: Paint,
+    maxRows: Int,
+): List<PlanetPlacement> {
+    val pathBounds = points.bounds()
+    val horizontalInset = max(4f, bounds.width() * 0.012f)
+    val verticalInset = max(4f, bounds.height() * 0.012f)
+    val availableHeight = max(1f, pathBounds.height() - verticalInset * 2f)
+    val rowCount = min(maxRows, tokens.size)
+    val placements = mutableListOf<PlanetPlacement>()
+    var nextToken = 0
+
+    for (row in 0 until rowCount) {
+        if (nextToken >= tokens.size) break
+        val y = pathBounds.top + verticalInset + availableHeight * (row + 0.5f) / rowCount
+        val span = houseSpanForRow(
+            points = points,
+            y = y,
+            signBox = signBox,
+            gap = planetSignGap(bounds),
+            horizontalInset = horizontalInset,
+        ) ?: continue
+        placements += PlanetPlacement(
+            token = ellipsize(tokens[nextToken], paint, span.width() * 0.86f),
+            center = Offset(span.centerX(), y),
+        )
+        nextToken += 1
+    }
+    return placements
+}
+
+private fun houseSpanForRow(
+    points: List<Offset>,
+    y: Float,
+    signBox: RectF,
+    gap: Float,
+    horizontalInset: Float,
+): RectF? {
+    val intersections = mutableListOf<Float>()
+    for (index in points.indices) {
+        val start = points[index]
+        val end = points[(index + 1) % points.size]
+        if ((start.y <= y && end.y > y) || (end.y <= y && start.y > y)) {
+            val ratio = (y - start.y) / (end.y - start.y)
+            intersections += start.x + (end.x - start.x) * ratio
+        }
+    }
+    if (intersections.size < 2) return null
+    intersections.sort()
+
+    var left = intersections.first() + horizontalInset
+    var right = intersections.last() - horizontalInset
+    if (right <= left) return null
+
+    if (y >= signBox.top - gap && y <= signBox.bottom + gap) {
+        val leftCandidate = RectF(left, y, min(right, signBox.left - gap), y)
+        val rightCandidate = RectF(max(left, signBox.right + gap), y, right, y)
+        if (rightCandidate.width() >= leftCandidate.width()) {
+            left = rightCandidate.left
+            right = rightCandidate.right
+        } else {
+            left = leftCandidate.left
+            right = leftCandidate.right
+        }
+    }
+
+    return if (right > left) RectF(left, y, right, y) else null
+}
+
+private fun List<Offset>.bounds(): RectF {
+    var left = Float.POSITIVE_INFINITY
+    var top = Float.POSITIVE_INFINITY
+    var right = Float.NEGATIVE_INFINITY
+    var bottom = Float.NEGATIVE_INFINITY
+    forEach { point ->
+        left = min(left, point.x)
+        top = min(top, point.y)
+        right = max(right, point.x)
+        bottom = max(bottom, point.y)
+    }
+    return RectF(left, top, right, bottom)
+}
+
+private fun List<Offset>.centroid(): Offset {
+    if (isEmpty()) return Offset.Zero
+    var x = 0f
+    var y = 0f
+    forEach { point ->
+        x += point.x
+        y += point.y
+    }
+    return Offset(x / size, y / size)
+}
+
+private fun planetPlacementOverlapsSign(
+    placement: PlanetPlacement,
+    signBox: RectF,
+    paint: Paint,
+    gap: Float,
+): Boolean {
+    val textWidth = paint.measureText(placement.token)
+    val tokenBox = RectF(
+        placement.center.x - textWidth / 2f - 7f,
+        placement.center.y - paint.textSize * 0.62f,
+        placement.center.x + textWidth / 2f + 7f,
+        placement.center.y + paint.textSize * 0.52f,
+    )
+    val protectedSignBox = RectF(signBox).apply { inset(-gap, -gap) }
+    return RectF.intersects(tokenBox, protectedSignBox)
+}
+
+private fun ascendantPlacement(
+    label: String,
+    houseIndex: Int,
+    bounds: RectF,
+    signBox: RectF,
+    planetPlacements: List<PlanetPlacement>,
+    paint: Paint,
+): Offset? {
+    val points = northHouseCornerPoints(houseIndex, bounds)
+    if (points.size < 3) return null
+    val pathBounds = points.bounds()
+    val protectedSignBox = RectF(signBox).apply { inset(-planetSignGap(bounds), -planetSignGap(bounds)) }
+    val textWidth = paint.measureText(label)
+    val labelWidth = textWidth + 14f
+    val labelHeight = paint.textSize * 1.18f
+    val planetBoxes = planetPlacements.map { placement ->
+        RectF(
+            placement.center.x - paint.measureText(placement.token) / 2f - 9f,
+            placement.center.y - paint.textSize * 0.7f,
+            placement.center.x + paint.measureText(placement.token) / 2f + 9f,
+            placement.center.y + paint.textSize * 0.58f,
+        )
+    }
+    val center = points.centroid()
+    val step = max(4f, paint.textSize * 0.45f)
+    val maxSteps = max(2, (pathBounds.height() / step).toInt())
+
+    for (ring in 0..maxSteps) {
+        val candidates = if (ring == 0) {
+            listOf(center)
+        } else {
+            listOf(
+                Offset(center.x, center.y - step * ring),
+                Offset(center.x, center.y + step * ring),
+                Offset(center.x - step * ring, center.y),
+                Offset(center.x + step * ring, center.y),
+                Offset(center.x - step * ring, center.y - step * ring),
+                Offset(center.x + step * ring, center.y - step * ring),
+                Offset(center.x - step * ring, center.y + step * ring),
+                Offset(center.x + step * ring, center.y + step * ring),
+            )
+        }
+        candidates.forEach { candidate ->
+            val labelBox = RectF(
+                candidate.x - labelWidth / 2f,
+                candidate.y - labelHeight / 2f,
+                candidate.x + labelWidth / 2f,
+                candidate.y + labelHeight / 2f,
+            )
+            if (
+                pointInPolygon(candidate, points) &&
+                pathBounds.contains(labelBox.left, labelBox.top) &&
+                pathBounds.contains(labelBox.right, labelBox.bottom) &&
+                !RectF.intersects(labelBox, protectedSignBox) &&
+                planetBoxes.none { RectF.intersects(labelBox, it) }
+            ) {
+                return candidate
+            }
+        }
+    }
+
+    return null
+}
+
+private fun crowdedPlanetTextSize(baseTextSize: Float, planetCount: Int): Float {
+    val reduction = when {
+        planetCount > 8 -> 2f
+        planetCount > 5 -> 1f
+        else -> 0f
+    }
+    return max(6f, baseTextSize - reduction)
+}
+
 private fun tokensFit(tokens: List<String>, paint: Paint, cellWidth: Float, cellHeight: Float): Boolean {
     return tokens.all { paint.measureText(it) <= cellWidth * 0.86f } && paint.textSize * 1.15f <= cellHeight
 }
@@ -1003,7 +1460,11 @@ private fun planetBoxAvoidingSign(
 }
 
 private fun planetSignGap(bounds: RectF): Float {
-    return max(4f, bounds.width() * 0.012f)
+    return max(6f, bounds.width() * 0.018f)
+}
+
+private fun signLinePadding(box: RectF): Float {
+    return max(2f, min(box.width(), box.height()) * 0.08f)
 }
 
 private fun chartBounds(width: Float, height: Float, density: Float): RectF {
@@ -1086,25 +1547,27 @@ private fun hitTestIsoPlanet(
     }
     val count = min(houses.size, 12)
     for (houseIndex in 0 until count) {
-        val labelBoxes = labelBoxesFor(chartStyle, houseIndex, bounds, paint.textSize) ?: continue
+        val visualHouseIndex = visualHouseIndexFor(chartStyle, houses[houseIndex], houseIndex)
+        val houseLabel = houseLabelText(chartStyle, houses[houseIndex], houseIndex, chartTheme)
+        val labelBoxes = labelBoxesFor(chartStyle, visualHouseIndex, bounds, paint.textSize, houseLabel.isNotBlank()) ?: continue
         val labels = planetLabels(houses[houseIndex], usePlanetIcons)
         if (labels.isEmpty()) continue
         val names = planetNames(houses[houseIndex])
-        val layout = buildPlanetGrid(
-            tokens = labels,
-            box = labelBoxes.planetBox,
+        val visibleLabels = labels.take(MaxPlanetsPerHouse)
+        val placements = buildHousePlanetPlacements(
+            tokens = visibleLabels,
+            chartStyle = chartStyle,
+            houseIndex = visualHouseIndex,
+            bounds = bounds,
+            signBox = labelBoxes.signBox,
             paint = paint,
-            baseTextSize = chartTheme.planetTextSizeSp * density,
+            baseTextSize = crowdedPlanetTextSize(chartTheme.planetTextSizeSp * density * 0.82f, visibleLabels.size),
             maxRows = maxPlanetRowsFor(chartStyle, houseIndex),
         )
-        val z = projection.blockHeight + projection.selectedLiftHeight * liftProgressFor(houseIndex, selectedHouseLifts) + 10f
-        layout.tokens.forEachIndexed { planetIndex, token ->
-            val row = planetIndex / layout.columns
-            val column = planetIndex % layout.columns
-            val flatX = labelBoxes.planetBox.left + layout.cellWidth * column + layout.cellWidth / 2f
-            val flatY = labelBoxes.planetBox.top + layout.cellHeight * row + layout.cellHeight / 2f
-            val point = projection.project(Offset(flatX, flatY), z = z)
-            val textWidth = paint.measureText(token)
+        val z = projection.blockHeight + projection.selectedLiftHeight * liftProgressFor(visualHouseIndex, selectedHouseLifts) + 10f
+        placements.forEachIndexed { planetIndex, placement ->
+            val point = projection.project(placement.center, z = z)
+            val textWidth = paint.measureText(placement.token)
             val hitRect = RectF(
                 point.x - textWidth / 2f - 9f * density,
                 point.y - paint.textSize * 0.68f,
@@ -1116,8 +1579,8 @@ private fun hitTestIsoPlanet(
                 return VedicPlanetSelection(
                     houseIndex = houseIndex,
                     planetIndex = planetIndex,
-                    planetName = planetName.ifBlank { labels[planetIndex] },
-                    planetLabel = labels[planetIndex],
+                    planetName = planetName.ifBlank { visibleLabels[planetIndex] },
+                    planetLabel = visibleLabels[planetIndex],
                     house = houses[houseIndex],
                 )
             }
@@ -1149,9 +1612,44 @@ private fun pointInPolygon(point: Offset, polygon: List<Offset>): Boolean {
 
 
 private fun maxPlanetRowsFor(chartStyle: ChartStyle, houseIndex: Int): Int {
-    return when (chartStyle) {
-        ChartStyle.NORTH -> northSlots().getOrNull(houseIndex)?.maxPlanetRows ?: 4
-        else -> if (usesComplexPlanetLayout(houseIndex)) 4 else 2
+    return MaxPlanetsPerHouse
+}
+
+private fun visualHouseIndexFor(chartStyle: ChartStyle, house: ZodiacHouse, fallbackIndex: Int): Int {
+    if (chartStyle != ChartStyle.SOUTH && chartStyle != ChartStyle.EAST) return fallbackIndex
+    val sign = house.sign
+    return if (sign in 1..12) sign - 1 else fallbackIndex
+}
+
+private fun visualHouseIndexForOrFallback(chartStyle: ChartStyle, house: ZodiacHouse?, fallbackIndex: Int): Int {
+    return if (house == null) fallbackIndex else visualHouseIndexFor(chartStyle, house, fallbackIndex)
+}
+
+private fun dataHouseIndexForVisualHouseIndex(
+    chartStyle: ChartStyle,
+    houses: List<ZodiacHouse>,
+    visualHouseIndex: Int,
+): Int {
+    if (chartStyle != ChartStyle.SOUTH && chartStyle != ChartStyle.EAST) return visualHouseIndex
+    return houses.indexOfFirst { house ->
+        house.sign in 1..12 && house.sign - 1 == visualHouseIndex
+    }.takeIf { it >= 0 } ?: visualHouseIndex
+}
+
+private fun houseLabelText(
+    chartStyle: ChartStyle,
+    house: ZodiacHouse,
+    houseIndex: Int,
+    theme: ChartTheme,
+): String {
+    if (chartStyle == ChartStyle.SOUTH || chartStyle == ChartStyle.EAST) {
+        return if (houseIndex == 0) "ASC" else ""
+    }
+
+    return if (theme.shouldShowSignNames()) {
+        "${house.signName} (${house.sign})"
+    } else {
+        house.sign.toString()
     }
 }
 
@@ -1755,12 +2253,12 @@ private fun RectF.corners(): List<Offset> {
 
 private fun southHitBoxes(): Array<RelativeBox> {
     return arrayOf(
-        RelativeBox(0.00f, 0.00f, 0.25f, 0.25f), RelativeBox(0.25f, 0.00f, 0.50f, 0.25f),
-        RelativeBox(0.50f, 0.00f, 0.75f, 0.25f), RelativeBox(0.75f, 0.00f, 1.00f, 0.25f),
-        RelativeBox(0.75f, 0.25f, 1.00f, 0.50f), RelativeBox(0.75f, 0.50f, 1.00f, 0.75f),
-        RelativeBox(0.75f, 0.75f, 1.00f, 1.00f), RelativeBox(0.50f, 0.75f, 0.75f, 1.00f),
-        RelativeBox(0.25f, 0.75f, 0.50f, 1.00f), RelativeBox(0.00f, 0.75f, 0.25f, 1.00f),
-        RelativeBox(0.00f, 0.50f, 0.25f, 0.75f), RelativeBox(0.00f, 0.25f, 0.25f, 0.50f),
+        RelativeBox(0.25f, 0.00f, 0.50f, 0.25f), RelativeBox(0.50f, 0.00f, 0.75f, 0.25f),
+        RelativeBox(0.75f, 0.00f, 1.00f, 0.25f), RelativeBox(0.75f, 0.25f, 1.00f, 0.50f),
+        RelativeBox(0.75f, 0.50f, 1.00f, 0.75f), RelativeBox(0.75f, 0.75f, 1.00f, 1.00f),
+        RelativeBox(0.50f, 0.75f, 0.75f, 1.00f), RelativeBox(0.25f, 0.75f, 0.50f, 1.00f),
+        RelativeBox(0.00f, 0.75f, 0.25f, 1.00f), RelativeBox(0.00f, 0.50f, 0.25f, 0.75f),
+        RelativeBox(0.00f, 0.25f, 0.25f, 0.50f), RelativeBox(0.00f, 0.00f, 0.25f, 0.25f),
     )
 }
 
@@ -1913,4 +2411,9 @@ private data class PlanetGrid(
     val columns: Int,
     val cellWidth: Float,
     val cellHeight: Float,
+)
+
+private data class PlanetPlacement(
+    val token: String,
+    val center: Offset,
 )

@@ -28,6 +28,7 @@ public class VedicChartView extends View {
 
     private ChartStyle chartStyle = ChartStyle.NORTH;
     private ChartTheme chartTheme = ChartTheme.light();
+    private int chartSizeInsetDp = 5;
 
     public VedicChartView(Context context) {
         super(context);
@@ -79,13 +80,20 @@ public class VedicChartView extends View {
         return chartTheme;
     }
 
+    public void setChartSizeInsetDp(int value) {
+        chartSizeInsetDp = Math.max(0, value);
+        requestLayout();
+        invalidate();
+    }
+
+    public int getChartSizeInsetDp() {
+        return chartSizeInsetDp;
+    }
+
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-        int desired = dp(320);
-        int width = resolveSize(desired, widthMeasureSpec);
-        int height = resolveSize(width, heightMeasureSpec);
-        int size = Math.min(width, height);
-        setMeasuredDimension(width, size);
+        int size = Math.max(0, getResources().getDisplayMetrics().widthPixels - dp(chartSizeInsetDp));
+        setMeasuredDimension(size, size);
     }
 
     @Override
@@ -179,7 +187,7 @@ public class VedicChartView extends View {
                 {0.36f, 0.26f, 0.64f, 0.44f}, {0.56f, 0.40f, 0.76f, 0.60f},
                 {0.36f, 0.56f, 0.64f, 0.74f}, {0.24f, 0.40f, 0.44f, 0.60f}
         };
-        drawHouseTexts(canvas, bounds, boxes);
+        drawHouseTexts(canvas, bounds, boxes, false);
     }
 
     private void drawSouthChart(Canvas canvas, RectF bounds) {
@@ -192,14 +200,14 @@ public class VedicChartView extends View {
 
         fillCenter(canvas, bounds, cell);
         float[][] boxes = {
-                {0.00f, 0.00f, 0.25f, 0.25f}, {0.25f, 0.00f, 0.50f, 0.25f},
-                {0.50f, 0.00f, 0.75f, 0.25f}, {0.75f, 0.00f, 1.00f, 0.25f},
-                {0.75f, 0.25f, 1.00f, 0.50f}, {0.75f, 0.50f, 1.00f, 0.75f},
-                {0.75f, 0.75f, 1.00f, 1.00f}, {0.50f, 0.75f, 0.75f, 1.00f},
-                {0.25f, 0.75f, 0.50f, 1.00f}, {0.00f, 0.75f, 0.25f, 1.00f},
-                {0.00f, 0.50f, 0.25f, 0.75f}, {0.00f, 0.25f, 0.25f, 0.50f}
+                {0.25f, 0.00f, 0.50f, 0.25f}, {0.50f, 0.00f, 0.75f, 0.25f},
+                {0.75f, 0.00f, 1.00f, 0.25f}, {0.75f, 0.25f, 1.00f, 0.50f},
+                {0.75f, 0.50f, 1.00f, 0.75f}, {0.75f, 0.75f, 1.00f, 1.00f},
+                {0.50f, 0.75f, 0.75f, 1.00f}, {0.25f, 0.75f, 0.50f, 1.00f},
+                {0.00f, 0.75f, 0.25f, 1.00f}, {0.00f, 0.50f, 0.25f, 0.75f},
+                {0.00f, 0.25f, 0.25f, 0.50f}, {0.00f, 0.00f, 0.25f, 0.25f}
         };
-        drawHouseTexts(canvas, bounds, boxes);
+        drawHouseTexts(canvas, bounds, boxes, true);
     }
 
     private void drawEastChart(Canvas canvas, RectF bounds) {
@@ -223,7 +231,7 @@ public class VedicChartView extends View {
                 {0.20f, 0.26f, 0.47f, 0.47f}, {0.53f, 0.26f, 0.80f, 0.47f},
                 {0.53f, 0.53f, 0.80f, 0.80f}, {0.20f, 0.53f, 0.47f, 0.80f}
         };
-        drawHouseTexts(canvas, bounds, boxes);
+        drawHouseTexts(canvas, bounds, boxes, true);
     }
 
     private void fillCenter(Canvas canvas, RectF bounds, float cell) {
@@ -237,25 +245,31 @@ public class VedicChartView extends View {
         canvas.drawRect(center, gridPaint);
     }
 
-    private void drawHouseTexts(Canvas canvas, RectF bounds, float[][] boxes) {
+    private void drawHouseTexts(Canvas canvas, RectF bounds, float[][] boxes, boolean useSignIndexedBoxes) {
         int count = Math.min(Math.min(boxes.length, houses.size()), 12);
         for (int index = 0; index < count; index++) {
             ZodiacHouse house = houses.get(index);
-            float[] box = boxes[index];
+            int boxIndex = useSignIndexedBoxes && house.getSign() >= 1 && house.getSign() <= 12
+                    ? house.getSign() - 1
+                    : index;
+            float[] box = boxes[boxIndex];
             textBounds.set(
                     bounds.left + bounds.width() * box[0],
                     bounds.top + bounds.height() * box[1],
                     bounds.left + bounds.width() * box[2],
                     bounds.top + bounds.height() * box[3]
             );
-            drawHouse(canvas, house, textBounds);
+            drawHouse(canvas, house, textBounds, index, useSignIndexedBoxes);
         }
     }
 
-    private void drawHouse(Canvas canvas, ZodiacHouse house, RectF box) {
-        String sign = chartTheme.shouldShowSignNames()
-                ? house.getSignName() + " (" + house.getSign() + ")"
-                : String.valueOf(house.getSign());
+    private void drawHouse(Canvas canvas, ZodiacHouse house, RectF box, int houseIndex, boolean hideSignNumber) {
+        String ascendant = houseIndex == 0 ? "ASC" : "";
+        String sign = hideSignNumber
+                ? ascendant
+                : chartTheme.shouldShowSignNames()
+                ? house.getSignName() + " (" + house.getSign() + ")" + (ascendant.isEmpty() ? "" : " " + ascendant)
+                : String.valueOf(house.getSign()) + (ascendant.isEmpty() ? "" : " " + ascendant);
         String planets = house.getPlanetDisplayText();
         List<TextLine> lines = buildFittedLines(sign, planets, box);
         if (lines.isEmpty()) {
@@ -288,7 +302,9 @@ public class VedicChartView extends View {
             planetTextPaint.setTextSize(Math.max(minTextSize, planetBaseSize * scale));
 
             List<TextLine> lines = new ArrayList<>();
-            lines.addAll(wrapText(sign, signTextPaint, maxWidth, 1));
+            if (sign != null && !sign.trim().isEmpty()) {
+                lines.addAll(wrapText(sign, signTextPaint, maxWidth, 1));
+            }
             if (planets != null && !planets.isEmpty()) {
                 lines.addAll(wrapText(planets, planetTextPaint, maxWidth, 2));
             }
@@ -301,7 +317,9 @@ public class VedicChartView extends View {
         signTextPaint.setTextSize(minTextSize);
         planetTextPaint.setTextSize(minTextSize);
         List<TextLine> compactLines = new ArrayList<>();
-        compactLines.add(new TextLine(ellipsize(sign, signTextPaint, maxWidth), signTextPaint));
+        if (sign != null && !sign.trim().isEmpty()) {
+            compactLines.add(new TextLine(ellipsize(sign, signTextPaint, maxWidth), signTextPaint));
+        }
         if (planets != null && !planets.isEmpty() && maxHeight >= minTextSize * 2.2f) {
             compactLines.add(new TextLine(ellipsize(planets, planetTextPaint, maxWidth), planetTextPaint));
         }
