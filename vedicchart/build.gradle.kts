@@ -57,7 +57,7 @@ afterEvaluate {
 
                 groupId = "com.github.vedicPrasad"
                 artifactId = "astrology_chart"
-                version = "1.0.1"
+                version = "1.0.2"
             }
         }
     }
