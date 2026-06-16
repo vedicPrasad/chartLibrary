@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.github.vedicPrasad"
-version = "1.0.4"
+version = "1.0.5"
 
 android {
     namespace = "com.vedicrishiastro.vedicchart"
@@ -57,7 +57,7 @@ afterEvaluate {
 
                 groupId = "com.github.vedicPrasad"
                 artifactId = "astrology_chart"
-                version = "1.0.4"
+                version = "1.0.5"
             }
         }
     }
