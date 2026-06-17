@@ -63,6 +63,12 @@ data class VedicPlanetSelection(
     val house: ZodiacHouse,
 )
 
+data class VedicTransitPlanet(
+    val planetName: String,
+    val planetLabel: String,
+    val houseIndex: Int,
+)
+
 @Composable
 fun VedicChart(
     houses: List<ZodiacHouse>,
@@ -73,6 +79,7 @@ fun VedicChart(
     animationDurationMillis: Int = 1200,
     usePlanetIcons: Boolean = false,
     chartSizeInset: Dp = 5.dp,
+    transitPlanets: List<VedicTransitPlanet>? = null,
     selectedHouseIndex: Int? = null,
     onHouseSelected: ((houseIndex: Int, house: ZodiacHouse) -> Unit)? = null,
     onPlanetSelected: ((VedicPlanetSelection) -> Unit)? = null,
@@ -231,6 +238,7 @@ fun VedicChart(
             rotationYawDegrees = rotationYawDegrees,
             rotationPitchDegrees = rotationPitchDegrees,
             usePlanetIcons = usePlanetIcons,
+            transitPlanets = transitPlanets.orEmpty(),
         )
     }
 }
@@ -245,6 +253,7 @@ private fun DrawScope.drawVedicChart(
     rotationYawDegrees: Float,
     rotationPitchDegrees: Float,
     usePlanetIcons: Boolean,
+    transitPlanets: List<VedicTransitPlanet>,
 ) {
     val bounds = chartBounds(size.width, size.height, density)
     val paints = ChartPaints(chartTheme)
@@ -264,6 +273,7 @@ private fun DrawScope.drawVedicChart(
             rotationYawDegrees = rotationYawDegrees,
             rotationPitchDegrees = rotationPitchDegrees,
             usePlanetIcons = usePlanetIcons,
+            transitPlanets = transitPlanets,
         )
     }
 }
@@ -326,8 +336,12 @@ private fun drawIsometricVedicChart(
     rotationYawDegrees: Float,
     rotationPitchDegrees: Float,
     usePlanetIcons: Boolean,
+    transitPlanets: List<VedicTransitPlanet>,
 ) {
     val projection = IsoProjection(bounds, rotationYawDegrees, rotationPitchDegrees)
+    val transitPlanetsByHouse = transitPlanets
+        .filter { it.houseIndex in 0 until 12 }
+        .groupBy { it.houseIndex }
     val housesToDraw = buildIsoHouses(chartStyle, bounds, selectedHouseLifts, projection)
     val restingHouses = housesToDraw
         .filter { it.selectedProgress <= 0f }
@@ -358,6 +372,7 @@ private fun drawIsometricVedicChart(
             projection = projection,
             textProgress = textProgress,
             usePlanetIcons = usePlanetIcons,
+            transitPlanetsByHouse = transitPlanetsByHouse,
             houseFilter = { houseIndex ->
                 liftProgressFor(visualHouseIndexForOrFallback(chartStyle, houses.getOrNull(houseIndex), houseIndex), selectedHouseLifts) <= 0f
             },
@@ -378,6 +393,7 @@ private fun drawIsometricVedicChart(
             projection = projection,
             textProgress = textProgress,
             usePlanetIcons = usePlanetIcons,
+            transitPlanetsByHouse = transitPlanetsByHouse,
             houseFilter = { houseIndex ->
                 liftProgressFor(visualHouseIndexForOrFallback(chartStyle, houses.getOrNull(houseIndex), houseIndex), selectedHouseLifts) > 0f
             },
@@ -551,6 +567,7 @@ private fun drawIsoHouseTexts(
     projection: IsoProjection,
     textProgress: Float,
     usePlanetIcons: Boolean,
+    transitPlanetsByHouse: Map<Int, List<VedicTransitPlanet>>,
     houseFilter: (Int) -> Boolean = { true },
 ) {
     val count = min(houses.size, 12)
@@ -574,6 +591,7 @@ private fun drawIsoHouseTexts(
             textProgress = textProgress,
             chartStyle = chartStyle,
             usePlanetIcons = usePlanetIcons,
+            transitPlanets = transitPlanetsByHouse[houseIndex].orEmpty(),
         )
         if (chartStyle == ChartStyle.NORTH && houseIndex == 0) {
             drawIsoAscendantLabel(
@@ -677,8 +695,12 @@ private fun drawIsoHousePlanets(
     textProgress: Float,
     chartStyle: ChartStyle,
     usePlanetIcons: Boolean,
+    transitPlanets: List<VedicTransitPlanet>,
 ): List<PlanetPlacement> {
-    val tokens = planetLabels(house, usePlanetIcons).take(MaxPlanetsPerHouse)
+    val natalTokens = planetLabels(house, usePlanetIcons).take(MaxPlanetsPerHouse)
+    val transitTokens = transitPlanetLabels(transitPlanets, usePlanetIcons)
+        .take((MaxPlanetsPerHouse - natalTokens.size).coerceAtLeast(0))
+    val tokens = natalTokens + transitTokens
     if (tokens.isEmpty()) return emptyList()
     val placements = buildHousePlanetPlacements(
         tokens = tokens,
@@ -695,17 +717,26 @@ private fun drawIsoHousePlanets(
         style = Paint.Style.FILL
         color = withAlpha(mixColors(paints.planetText.color, paints.fill.color, 0.84f), (92 * textProgress).toInt())
     }
+    val transitFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = withAlpha(mixColors(paints.accent.color, Color.WHITE, 0.22f), (215 * textProgress).toInt())
+    }
+    val transitStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = max(1.2f, bounds.width() * 0.003f)
+        color = withAlpha(mixColors(paints.accent.color, Color.BLACK, 0.24f), (230 * textProgress).toInt())
+    }
     setPaintAlpha(paints.planetText, textProgress)
-    placements.forEach { placement ->
+    placements.forEachIndexed { index, placement ->
         val point = projection.project(placement.center, z = height + 10f)
         val textWidth = paints.planetText.measureText(placement.token)
-        val pill = RectF(
-            point.x - textWidth / 2f - 7f,
-            point.y - paints.planetText.textSize * 0.62f,
-            point.x + textWidth / 2f + 7f,
-            point.y + paints.planetText.textSize * 0.52f,
-        )
-        canvas.drawRoundRect(pill, pill.height() * 0.48f, pill.height() * 0.48f, pillPaint)
+        val radius = max(paints.planetText.textSize * 0.72f, textWidth / 2f + 7f)
+        if (index < natalTokens.size) {
+            canvas.drawCircle(point.x, point.y, radius, pillPaint)
+        } else {
+            canvas.drawCircle(point.x, point.y, radius, transitFillPaint)
+            canvas.drawCircle(point.x, point.y, radius, transitStrokePaint)
+        }
         canvas.drawText(placement.token, point.x, point.y + centeredTextOffset(paints.planetText), paints.planetText)
     }
     setPaintAlpha(paints.planetText, 1f)
@@ -1923,6 +1954,20 @@ private fun planetLabels(house: ZodiacHouse, usePlanetIcons: Boolean): List<Stri
         .filter { it.isNotBlank() }
     return names.mapIndexed { index, planetName ->
         shortNames.getOrNull(index)?.ifBlank { planetName } ?: planetName
+    }
+}
+
+private fun transitPlanetLabels(
+    transitPlanets: List<VedicTransitPlanet>,
+    usePlanetIcons: Boolean,
+): List<String> {
+    return transitPlanets.mapNotNull { planet ->
+        val label = if (usePlanetIcons) {
+            planetIconFor(planet.planetName)
+        } else {
+            planet.planetLabel.ifBlank { planet.planetName }
+        }.trim()
+        label.takeIf { it.isNotBlank() }
     }
 }
 

@@ -34,6 +34,7 @@ import com.vedicrishiastro.vedicchart.ChartTheme
 import com.vedicrishiastro.vedicchart.ZodiacHouse
 import com.vedicrishiastro.vedicchart.compose.VedicChart
 import com.vedicrishiastro.vedicchart.compose.VedicPlanetSelection
+import com.vedicrishiastro.vedicchart.compose.VedicTransitPlanet
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -54,6 +55,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun ChartDemoScreen() {
     val houses = remember { ZodiacHouse.fromJson(DUMMY_CHART_JSON) }
+    val transitPlanets = remember { houseTransitsToChartPlanets(DUMMY_HOUSE_TRANSITS) }
 
     Column(
         modifier = Modifier
@@ -63,9 +65,9 @@ private fun ChartDemoScreen() {
         verticalArrangement = Arrangement.spacedBy(12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        ChartSection("North Indian", ChartStyle.NORTH, ChartTheme.temple(), houses)
-        ChartSection("South Indian", ChartStyle.SOUTH, ChartTheme.temple(), houses)
-        ChartSection("East Indian", ChartStyle.EAST, ChartTheme.temple(), houses)
+        ChartSection("North Indian", ChartStyle.NORTH, ChartTheme.temple(), houses, transitPlanets)
+        ChartSection("South Indian", ChartStyle.SOUTH, ChartTheme.temple(), houses, transitPlanets)
+        ChartSection("East Indian", ChartStyle.EAST, ChartTheme.temple(), houses, transitPlanets)
     }
 }
 
@@ -75,6 +77,7 @@ private fun ChartSection(
     chartStyle: ChartStyle,
     chartTheme: ChartTheme,
     houses: List<ZodiacHouse>,
+    transitPlanets: List<VedicTransitPlanet>,
 ) {
     var selectedPlanet by remember { mutableStateOf<VedicPlanetSelection?>(null) }
     var usePlanetIcons by remember { mutableStateOf(false) }
@@ -119,6 +122,7 @@ private fun ChartSection(
         chartStyle = chartStyle,
         chartTheme = effectiveChartTheme,
         usePlanetIcons = usePlanetIcons,
+        transitPlanets = transitPlanets,
         onPlanetSelected = { selectedPlanet = it },
         modifier = Modifier,
     )
@@ -143,6 +147,38 @@ private fun ChartSection(
     }
 }
 
+private data class HouseTransit(
+    val planetName: String,
+    val currentNatalHouseFromLagna: Int,
+)
+
+private fun houseTransitsToChartPlanets(transits: List<HouseTransit>): List<VedicTransitPlanet> {
+    return transits.mapNotNull { transit ->
+        val houseIndex = transit.currentNatalHouseFromLagna - 1
+        if (houseIndex !in 0 until 12) return@mapNotNull null
+        VedicTransitPlanet(
+            planetName = transit.planetName,
+            planetLabel = planetShortLabel(transit.planetName),
+            houseIndex = houseIndex,
+        )
+    }
+}
+
+private fun planetShortLabel(planetName: String): String {
+    return when (planetName.trim().uppercase()) {
+        "SUN", "SURYA" -> "Su"
+        "MOON", "CHANDRA" -> "Mo"
+        "MARS", "MANGAL" -> "Ma"
+        "MERCURY", "BUDH" -> "Me"
+        "JUPITER", "GURU", "BRIHASPATI" -> "Ju"
+        "VENUS", "SHUKRA" -> "Ve"
+        "SATURN", "SHANI" -> "Sa"
+        "RAHU" -> "Ra"
+        "KETU" -> "Ke"
+        else -> planetName.trim().take(2).replaceFirstChar { it.uppercase() }
+    }
+}
+
 private fun ChartTheme.withPreviousHouseColors(): ChartTheme {
     val previousTheme = ChartTheme.light()
     return ChartTheme.Builder()
@@ -159,6 +195,18 @@ private fun ChartTheme.withPreviousHouseColors(): ChartTheme {
         .showSignNames(shouldShowSignNames())
         .build()
 }
+
+private val DUMMY_HOUSE_TRANSITS = listOf(
+    HouseTransit(planetName = "Sun", currentNatalHouseFromLagna = 1),
+    HouseTransit(planetName = "Moon", currentNatalHouseFromLagna = 1),
+    HouseTransit(planetName = "Mars", currentNatalHouseFromLagna = 12),
+    HouseTransit(planetName = "Mercury", currentNatalHouseFromLagna = 2),
+    HouseTransit(planetName = "Jupiter", currentNatalHouseFromLagna = 2),
+    HouseTransit(planetName = "Venus", currentNatalHouseFromLagna = 3),
+    HouseTransit(planetName = "Saturn", currentNatalHouseFromLagna = 11),
+    HouseTransit(planetName = "Rahu", currentNatalHouseFromLagna = 10),
+    HouseTransit(planetName = "Ketu", currentNatalHouseFromLagna = 4),
+)
 
 private val PremiumColorScheme = lightColorScheme(
     primary = Color(0xFFC18426),
