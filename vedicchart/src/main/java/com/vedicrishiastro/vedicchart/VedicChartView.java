@@ -17,6 +17,7 @@ import java.util.Collections;
 import java.util.List;
 
 public class VedicChartView extends View {
+    private static final int DEFAULT_MAX_CHART_SIDE_DP = 360;
     private final Paint fillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint linePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint gridPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -92,7 +93,10 @@ public class VedicChartView extends View {
 
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-        int size = Math.max(0, getResources().getDisplayMetrics().widthPixels - dp(chartSizeInsetDp));
+        int size = Math.min(
+                Math.max(0, getResources().getDisplayMetrics().widthPixels - dp(chartSizeInsetDp)),
+                dp(DEFAULT_MAX_CHART_SIDE_DP)
+        );
         setMeasuredDimension(size, size);
     }
 

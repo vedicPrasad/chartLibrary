@@ -82,6 +82,7 @@ private fun ChartSection(
     var selectedPlanet by remember { mutableStateOf<VedicPlanetSelection?>(null) }
     var usePlanetIcons by remember { mutableStateOf(false) }
     var usePreviousChartColors by remember { mutableStateOf(false) }
+    var is3dView by remember { mutableStateOf(true) }
     val effectiveChartTheme = remember(chartTheme, usePreviousChartColors) {
         if (usePreviousChartColors) {
             chartTheme.withPreviousHouseColors()
@@ -117,11 +118,23 @@ private fun ChartSection(
             onCheckedChange = { usePreviousChartColors = it },
         )
     }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(text = "3D drag view")
+        Switch(
+            checked = is3dView,
+            onCheckedChange = { is3dView = it },
+        )
+    }
     VedicChart(
         houses = houses,
         chartStyle = chartStyle,
         chartTheme = effectiveChartTheme,
         usePlanetIcons = usePlanetIcons,
+        is3dView = is3dView,
         transitPlanets = transitPlanets,
         onPlanetSelected = { selectedPlanet = it },
         modifier = Modifier,

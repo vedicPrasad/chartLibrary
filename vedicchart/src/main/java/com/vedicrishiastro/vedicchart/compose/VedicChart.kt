@@ -50,6 +50,7 @@ private const val MinPitchDegrees = -85f
 private const val MaxPitchDegrees = 85f
 private const val MaxPlanetsPerHouse = 10
 private const val HouseNumberTextSizeBoost = 2f
+private val DefaultMaxChartSide = 360.dp
 private val IsoSurfaceColor: Int = Color.rgb(250, 246, 236)
 private val IsoEdgeColor: Int = Color.rgb(43, 35, 28)
 private val IsoSignExtrudeColor: Int = Color.rgb(116, 82, 42)
@@ -78,13 +79,17 @@ fun VedicChart(
     animate: Boolean = true,
     animationDurationMillis: Int = 1200,
     usePlanetIcons: Boolean = false,
+    is3dView: Boolean = false,
     chartSizeInset: Dp = 5.dp,
     transitPlanets: List<VedicTransitPlanet>? = null,
     selectedHouseIndex: Int? = null,
     onHouseSelected: ((houseIndex: Int, house: ZodiacHouse) -> Unit)? = null,
     onPlanetSelected: ((VedicPlanetSelection) -> Unit)? = null,
 ) {
-    val chartSide = (LocalConfiguration.current.screenWidthDp.dp - chartSizeInset).coerceAtLeast(0.dp)
+    val chartSide = minOf(
+        LocalConfiguration.current.screenWidthDp.dp - chartSizeInset,
+        DefaultMaxChartSide,
+    ).coerceAtLeast(0.dp)
     val density = LocalDensity.current.density
     var internalSelectedHouseIndex by remember { mutableStateOf<Int?>(null) }
     var rotationYawDegrees by remember { mutableStateOf(0f) }
@@ -169,6 +174,8 @@ fun VedicChart(
 
     val progress = lineReveal.value
     val textProgress = textReveal.value
+    val effectiveYawDegrees = if (is3dView) rotationYawDegrees else 0f
+    val effectivePitchDegrees = if (is3dView) rotationPitchDegrees else 0f
     val selectedHouseLifts = listOfNotNull(
         outgoingSelectedHouseIndex?.let {
             SelectedHouseLift(visualHouseIndexForOrFallback(chartStyle, houses.getOrNull(it), it), outgoingLiftProgress.value)
@@ -177,8 +184,8 @@ fun VedicChart(
             SelectedHouseLift(visualHouseIndexForOrFallback(chartStyle, houses.getOrNull(it), it), incomingLiftProgress.value)
         },
     ).filter { it.progress > 0f }
-    Canvas(
-        modifier = modifier
+    val chartModifier = if (is3dView) {
+        modifier
             .requiredSize(chartSide)
             .pointerInput(Unit) {
                 detectDragGestures { _, dragAmount ->
@@ -186,10 +193,15 @@ fun VedicChart(
                     rotationPitchDegrees = clampPitch(rotationPitchDegrees - dragAmount.y * 0.42f)
                 }
             }
-            .pointerInput(houses, chartStyle, chartTheme, density, usePlanetIcons, selectedHouseLifts, rotationYawDegrees, rotationPitchDegrees) {
+    } else {
+        modifier.requiredSize(chartSide)
+    }
+    Canvas(
+        modifier = chartModifier
+            .pointerInput(houses, chartStyle, chartTheme, density, usePlanetIcons, selectedHouseLifts, effectiveYawDegrees, effectivePitchDegrees) {
             detectTapGestures { offset ->
                 val bounds = chartBounds(size.width.toFloat(), size.height.toFloat(), density)
-                val projection = IsoProjection(bounds, rotationYawDegrees, rotationPitchDegrees)
+                val projection = IsoProjection(bounds, effectiveYawDegrees, effectivePitchDegrees)
                 val planetSelection = hitTestIsoPlanet(
                     offset = offset,
                     bounds = bounds,
@@ -235,8 +247,8 @@ fun VedicChart(
             lineReveal = progress,
             textProgress = textProgress,
             selectedHouseLifts = selectedHouseLifts,
-            rotationYawDegrees = rotationYawDegrees,
-            rotationPitchDegrees = rotationPitchDegrees,
+            rotationYawDegrees = effectiveYawDegrees,
+            rotationPitchDegrees = effectivePitchDegrees,
             usePlanetIcons = usePlanetIcons,
             transitPlanets = transitPlanets.orEmpty(),
         )
