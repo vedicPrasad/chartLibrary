@@ -62,6 +62,7 @@ data class VedicPlanetSelection(
     val planetName: String,
     val planetLabel: String,
     val house: ZodiacHouse,
+    val isTransit: Boolean = false,
 )
 
 data class VedicTransitPlanet(
@@ -198,7 +199,7 @@ fun VedicChart(
     }
     Canvas(
         modifier = chartModifier
-            .pointerInput(houses, chartStyle, chartTheme, density, usePlanetIcons, selectedHouseLifts, effectiveYawDegrees, effectivePitchDegrees) {
+            .pointerInput(houses, chartStyle, chartTheme, density, usePlanetIcons, transitPlanets, selectedHouseLifts, effectiveYawDegrees, effectivePitchDegrees) {
             detectTapGestures { offset ->
                 val bounds = chartBounds(size.width.toFloat(), size.height.toFloat(), density)
                 val projection = IsoProjection(bounds, effectiveYawDegrees, effectivePitchDegrees)
@@ -210,6 +211,7 @@ fun VedicChart(
                     chartTheme = chartTheme,
                     density = density,
                     usePlanetIcons = usePlanetIcons,
+                    transitPlanets = transitPlanets.orEmpty(),
                     selectedHouseLifts = selectedHouseLifts,
                     projection = projection,
                 )
@@ -463,15 +465,21 @@ private fun buildIsoHouses(
         val basePoints = points.map { projection.project(it, z = extraZ) }
         val topPoints = points.map { projection.project(it, z = height + extraZ) }
         val cornerPoints = houseCornerPoints(chartStyle, houseIndex, bounds)
-        val connectedEastBlock = chartStyle == ChartStyle.EAST && selectedLift <= 0f
+        val outerEdges = outerEdgeVisibility(points, bounds)
+        val cornerOuterVisible = cornerPoints.map { isOuterBoundaryPoint(it, bounds) }
         IsoHouse(
             houseIndex = houseIndex,
             basePoints = basePoints,
             topPoints = topPoints,
             cornerBasePoints = cornerPoints.map { projection.project(it, z = extraZ) },
             cornerTopPoints = cornerPoints.map { projection.project(it, z = height + extraZ) },
-            wallEdgeVisible = if (connectedEastBlock) eastOuterEdgeVisibility(points, bounds) else List(points.size) { true },
-            depth = basePoints.map { it.y }.average().toFloat(),
+            cornerOuterVisible = cornerOuterVisible,
+            wallEdgeVisible = if (selectedLift > 0f) {
+                List(points.size) { true }
+            } else {
+                outerEdges
+            },
+            depth = points.map { projection.cameraDepth(it, z = height + extraZ) }.average().toFloat(),
             selectedProgress = selectedLift,
             extraZ = extraZ,
         )
@@ -539,8 +547,21 @@ private fun drawIsoHousePrism(
         canvas.drawPath(wallPath, wallPaint)
     }
     canvas.drawPath(topPath, topPaint)
-    canvas.drawPath(topPath, edgePaint)
+    drawProjectedTopBorders(canvas, house, edgePaint)
     drawIsoHouseCornerSideEdges(canvas, house, chartStyle, edgePaint)
+}
+
+private fun drawProjectedTopBorders(
+    canvas: android.graphics.Canvas,
+    house: IsoHouse,
+    edgePaint: Paint,
+) {
+    for (index in house.topPoints.indices) {
+        val next = (index + 1) % house.topPoints.size
+        val start = house.topPoints[index]
+        val end = house.topPoints[next]
+        canvas.drawLine(start.x, start.y, end.x, end.y, edgePaint)
+    }
 }
 
 private fun drawIsoHouseCornerSideEdges(
@@ -552,6 +573,9 @@ private fun drawIsoHouseCornerSideEdges(
     val visibleEdgeFloor = topPathBoundsCenterY(house.basePoints)
     house.cornerBasePoints.indices.forEach { index ->
         if (isNorthCenterCornerEdge(chartStyle, house.houseIndex, index)) return@forEach
+        val isSelectedHouseEdge = house.selectedProgress > 0f
+        val isOuterHouseEdge = house.cornerOuterVisible.getOrElse(index) { false }
+        if (!isSelectedHouseEdge && !isOuterHouseEdge) return@forEach
         val base = house.cornerBasePoints[index]
         val top = house.cornerTopPoints.getOrNull(index) ?: return@forEach
         if (base.y < visibleEdgeFloor) return@forEach
@@ -741,8 +765,7 @@ private fun drawIsoHousePlanets(
     setPaintAlpha(paints.planetText, textProgress)
     placements.forEachIndexed { index, placement ->
         val point = projection.project(placement.center, z = height + 10f)
-        val textWidth = paints.planetText.measureText(placement.token)
-        val radius = max(paints.planetText.textSize * 0.72f, textWidth / 2f + 7f)
+        val radius = planetBubbleRadius(paints.planetText.textSize, bounds.width())
         if (index < natalTokens.size) {
             canvas.drawCircle(point.x, point.y, radius, pillPaint)
         } else {
@@ -818,7 +841,7 @@ private fun labelBoxesFor(
         }
         ChartStyle.SOUTH,
         ChartStyle.EAST -> houseHitBoxes(chartStyle).getOrNull(houseIndex)?.toRect(bounds)?.let { box ->
-            val inset = 3f
+            val inset = max(6f, min(box.width(), box.height()) * 0.08f)
             val signHeight = if (hasSignLabel) min(box.height() * 0.34f, planetTextSize * 1.7f) else 0f
             val signBox = RectF(box.left + inset, box.top + inset, box.right - inset, box.top + inset + signHeight)
             LabelBoxes(
@@ -871,20 +894,29 @@ private fun insetPolygon(points: List<Offset>, amount: Float): List<Offset> {
     }
 }
 
-private fun eastOuterEdgeVisibility(points: List<Offset>, bounds: RectF): List<Boolean> {
+private fun outerEdgeVisibility(points: List<Offset>, bounds: RectF): List<Boolean> {
     return points.indices.map { index ->
         val next = (index + 1) % points.size
-        isOuterEastEdge(points[index], points[next], bounds)
+        isOuterBoundaryEdge(points[index], points[next], bounds)
     }
 }
 
-private fun isOuterEastEdge(start: Offset, end: Offset, bounds: RectF): Boolean {
+private fun isOuterBoundaryEdge(start: Offset, end: Offset, bounds: RectF): Boolean {
     val tolerance = max(bounds.width(), bounds.height()) * 0.001f
     val verticalOuter = kotlin.math.abs(start.x - end.x) <= tolerance &&
         (kotlin.math.abs(start.x - bounds.left) <= tolerance || kotlin.math.abs(start.x - bounds.right) <= tolerance)
     val horizontalOuter = kotlin.math.abs(start.y - end.y) <= tolerance &&
         (kotlin.math.abs(start.y - bounds.top) <= tolerance || kotlin.math.abs(start.y - bounds.bottom) <= tolerance)
-    return verticalOuter || horizontalOuter
+    return verticalOuter || horizontalOuter ||
+        (isOuterBoundaryPoint(start, bounds) && isOuterBoundaryPoint(end, bounds))
+}
+
+private fun isOuterBoundaryPoint(point: Offset, bounds: RectF): Boolean {
+    val tolerance = max(bounds.width(), bounds.height()) * 0.001f
+    return kotlin.math.abs(point.x - bounds.left) <= tolerance ||
+        kotlin.math.abs(point.x - bounds.right) <= tolerance ||
+        kotlin.math.abs(point.y - bounds.top) <= tolerance ||
+        kotlin.math.abs(point.y - bounds.bottom) <= tolerance
 }
 
 private fun topPathBoundsCenterX(points: List<Offset>): Float {
@@ -938,6 +970,14 @@ private class IsoProjection(
             x = bounds.centerX() + x2 * perspective,
             y = bounds.centerY() + y1 * perspective,
         )
+    }
+
+    fun cameraDepth(point: Offset, z: Float): Float {
+        val x0 = point.x - bounds.centerX()
+        val y0 = point.y - bounds.centerY()
+        val y1 = y0 * cosPitch - z * sinPitch
+        val z1 = y0 * sinPitch + z * cosPitch
+        return -x0 * sinYaw + z1 * cosYaw
     }
 }
 
@@ -1138,19 +1178,21 @@ private fun buildHousePlanetPlacements(
     val points = houseCornerPoints(chartStyle, houseIndex, bounds)
     if (tokens.isEmpty() || points.size < 3) return emptyList()
 
-    val pathBounds = points.bounds()
     val minTextSize = 6f
-    val horizontalInset = max(4f, bounds.width() * 0.012f)
-    val verticalInset = max(4f, bounds.height() * 0.012f)
-    val availableHeight = max(1f, pathBounds.height() - verticalInset * 2f)
+    val horizontalInset = max(5f, bounds.width() * 0.014f)
+    val verticalInset = max(5f, bounds.height() * 0.014f)
     var textSize = baseTextSize
 
     while (textSize >= minTextSize) {
         paint.textSize = textSize
+        val bubbleInset = planetBubbleRadius(textSize, bounds.width()) + max(2f, bounds.width() * 0.006f)
+        val placementPoints = insetPolygon(points, bubbleInset)
+        val pathBounds = placementPoints.bounds()
+        val availableHeight = max(1f, pathBounds.height() - verticalInset * 2f)
         if (tokens.size <= 2) {
             buildSparseHousePlanetPlacements(
                 tokens = tokens,
-                points = points,
+                points = placementPoints,
                 pathBounds = pathBounds,
                 signBox = signBox,
                 bounds = bounds,
@@ -1171,7 +1213,7 @@ private fun buildHousePlanetPlacements(
             if (nextToken >= tokens.size) break
             val y = pathBounds.top + verticalInset + availableHeight * (row + 0.5f) / rowCount
             val span = houseSpanForRow(
-                points = points,
+                points = placementPoints,
                 y = y,
                 signBox = signBox,
                 gap = planetSignGap(bounds),
@@ -1197,7 +1239,8 @@ private fun buildHousePlanetPlacements(
     }
 
     paint.textSize = minTextSize
-    return fallbackHousePlanetPlacements(tokens, points, signBox, bounds, paint, maxRows)
+    val fallbackInset = planetBubbleRadius(minTextSize, bounds.width()) + max(2f, bounds.width() * 0.006f)
+    return fallbackHousePlanetPlacements(tokens, insetPolygon(points, fallbackInset), signBox, bounds, paint, maxRows)
 }
 
 private fun buildSparseHousePlanetPlacements(
@@ -1468,6 +1511,10 @@ private fun planetTokenRadius(rect: RectF): Float {
     return min(rect.width(), rect.height()) * 0.48f
 }
 
+private fun planetBubbleRadius(textSize: Float, chartWidth: Float): Float {
+    return max(textSize * 0.78f, chartWidth * 0.024f)
+}
+
 private fun planetBoxAvoidingSign(
     planetBox: RectF,
     signBox: RectF,
@@ -1580,6 +1627,7 @@ private fun hitTestIsoPlanet(
     chartTheme: ChartTheme,
     density: Float,
     usePlanetIcons: Boolean,
+    transitPlanets: List<VedicTransitPlanet>,
     selectedHouseLifts: List<SelectedHouseLift>,
     projection: IsoProjection,
 ): VedicPlanetSelection? {
@@ -1588,43 +1636,56 @@ private fun hitTestIsoPlanet(
         isFakeBoldText = true
         textSize = chartTheme.planetTextSizeSp * density
     }
+    val transitPlanetsByHouse = transitPlanets
+        .filter { it.houseIndex in 0 until 12 }
+        .groupBy { it.houseIndex }
     val count = min(houses.size, 12)
     for (houseIndex in 0 until count) {
         val visualHouseIndex = visualHouseIndexFor(chartStyle, houses[houseIndex], houseIndex)
         val houseLabel = houseLabelText(chartStyle, houses[houseIndex], houseIndex, chartTheme)
         val labelBoxes = labelBoxesFor(chartStyle, visualHouseIndex, bounds, paint.textSize, houseLabel.isNotBlank()) ?: continue
-        val labels = planetLabels(houses[houseIndex], usePlanetIcons)
+        val natalLabels = planetLabels(houses[houseIndex], usePlanetIcons).take(MaxPlanetsPerHouse)
+        val transitForHouse = transitPlanetsByHouse[houseIndex].orEmpty()
+        val transitLabels = transitPlanetLabels(transitForHouse, usePlanetIcons)
+            .take((MaxPlanetsPerHouse - natalLabels.size).coerceAtLeast(0))
+        val labels = natalLabels + transitLabels
         if (labels.isEmpty()) continue
         val names = planetNames(houses[houseIndex])
-        val visibleLabels = labels.take(MaxPlanetsPerHouse)
         val placements = buildHousePlanetPlacements(
-            tokens = visibleLabels,
+            tokens = labels,
             chartStyle = chartStyle,
             houseIndex = visualHouseIndex,
             bounds = bounds,
             signBox = labelBoxes.signBox,
             paint = paint,
-            baseTextSize = crowdedPlanetTextSize(chartTheme.planetTextSizeSp * density * 0.82f, visibleLabels.size),
+            baseTextSize = crowdedPlanetTextSize(chartTheme.planetTextSizeSp * density * 0.82f, labels.size),
             maxRows = maxPlanetRowsFor(chartStyle, houseIndex),
         )
         val z = projection.blockHeight + projection.selectedLiftHeight * liftProgressFor(visualHouseIndex, selectedHouseLifts) + 10f
         placements.forEachIndexed { planetIndex, placement ->
             val point = projection.project(placement.center, z = z)
-            val textWidth = paint.measureText(placement.token)
+            val radius = max(planetBubbleRadius(paint.textSize, bounds.width()), 16f * density)
             val hitRect = RectF(
-                point.x - textWidth / 2f - 9f * density,
-                point.y - paint.textSize * 0.68f,
-                point.x + textWidth / 2f + 9f * density,
-                point.y + paint.textSize * 0.58f,
+                point.x - radius,
+                point.y - radius,
+                point.x + radius,
+                point.y + radius,
             )
             if (hitRect.contains(offset.x, offset.y)) {
-                val planetName = names.getOrNull(planetIndex).orEmpty()
+                val isTransit = planetIndex >= natalLabels.size
+                val transitIndex = planetIndex - natalLabels.size
+                val planetName = if (isTransit) {
+                    transitForHouse.getOrNull(transitIndex)?.planetName.orEmpty()
+                } else {
+                    names.getOrNull(planetIndex).orEmpty()
+                }
                 return VedicPlanetSelection(
                     houseIndex = houseIndex,
                     planetIndex = planetIndex,
-                    planetName = planetName.ifBlank { visibleLabels[planetIndex] },
-                    planetLabel = visibleLabels[planetIndex],
+                    planetName = planetName.ifBlank { labels[planetIndex] },
+                    planetLabel = labels[planetIndex],
                     house = houses[houseIndex],
+                    isTransit = isTransit,
                 )
             }
         }
@@ -2431,6 +2492,7 @@ private data class IsoHouse(
     val topPoints: List<Offset>,
     val cornerBasePoints: List<Offset>,
     val cornerTopPoints: List<Offset>,
+    val cornerOuterVisible: List<Boolean>,
     val wallEdgeVisible: List<Boolean>,
     val depth: Float,
     val selectedProgress: Float,
